@@ -1,0 +1,108 @@
+"""
+MGA AI Agent Configuration
+Supports multiple LLM providers: Groq (default), Gemini, OpenAI, Anthropic
+"""
+
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# --- LLM Configuration ---
+# Default to Groq for fast and free inference
+LLM_PROVIDERS = {
+    "groq": {
+        "name": "Groq (Rápido)",
+        "model": "openai/gpt-oss-120b",
+        "env_key": "GROQ_API_KEY",
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "model": "gemini-2.5-pro",
+        "env_key": "GOOGLE_API_KEY",
+    },
+    "openai": {
+        "name": "OpenAI GPT-4",
+        "model": "gpt-4-turbo-preview",
+        "env_key": "OPENAI_API_KEY",
+    },
+    "anthropic": {
+        "name": "Anthropic Claude",
+        "model": "claude-3-sonnet-20240229",
+        "env_key": "ANTHROPIC_API_KEY",
+    },
+}
+
+DEFAULT_PROVIDER = "groq"
+
+# --- API Keys ---
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+# --- Database ---
+DATABASE_PATH = os.path.join(os.path.dirname(__file__), "database", "mga_agent.db")
+
+# --- App Settings ---
+APP_TITLE = "Agente IA para Proyectos MGA"
+APP_DESCRIPTION = "Herramienta de apoyo para formulación de proyectos públicos en la plataforma MGA del DNP"
+
+# --- Document Templates ---
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
+
+# Create output directory if it doesn't exist
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+
+def get_available_providers():
+    """Return list of providers that have API keys configured"""
+    available = []
+    for provider_id, config in LLM_PROVIDERS.items():
+        api_key = os.getenv(config["env_key"], "")
+        if api_key:
+            available.append({
+                "id": provider_id,
+                "name": config["name"],
+                "model": config["model"]
+            })
+    return available
+
+
+def get_llm(provider: str = None):
+    """Get LLM instance for the specified provider"""
+    provider = provider or DEFAULT_PROVIDER
+    
+    if provider == "groq":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=LLM_PROVIDERS["groq"]["model"],
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+            temperature=0.3,
+        )
+    elif provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=LLM_PROVIDERS["gemini"]["model"],
+            google_api_key=GOOGLE_API_KEY,
+            temperature=0.3,
+        )
+    elif provider == "openai":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=LLM_PROVIDERS["openai"]["model"],
+            api_key=OPENAI_API_KEY,
+            temperature=0.3,
+        )
+    elif provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            model=LLM_PROVIDERS["anthropic"]["model"],
+            api_key=ANTHROPIC_API_KEY,
+            temperature=0.3,
+        )
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
