@@ -1,0 +1,53 @@
+=== 1. INFORMACIÓN GENERAL ===
+Municipio: San Pablo
+Departamento: Bolívar
+Entidad: Alcaldía Municipal de San Pablo
+Código BPIN: 202413000123
+Nombre del Proyecto: CONSTRUCCIÓN Y OPTIMIZACIÓN DE ALCANTARILLADO PLUVIAL EN EL CASCO URBANO
+Valor Total: 2500000000
+Duración: 180
+Responsable: Carlos Augusto Gil Delgado
+Cargo: Secretario de Planeación e Infraestructura
+Nombre del Alcalde: Juan Esteban Pérez
+
+=== 2. DETALLES DE CONTRATACIÓN Y JURÍDICA ===
+Objeto Contractual:
+Contratar la construcción y optimización del sistema de alcantarillado pluvial en los sectores críticos del casco urbano del municipio de San Pablo, Bolívar, para mitigar inundaciones y mejorar la calidad de vida.
+
+Modalidad: Licitación Pública
+Número de Contrato: LP-005-2026
+
+Necesidad / Descripción Problema:
+El municipio de San Pablo presenta graves problemas de inundación en época invernal debido a la insuficiencia y obsolescencia de la red de alcantarillado pluvial actual. Esto ocasiona represamiento de aguas, proliferación de vectores (mosquitos), daños en las vías y afectación a viviendas y comercios. Se requiere optimizar la red existente y construir nuevos colectores para garantizar el drenaje eficiente de las aguas lluvias.
+
+Alcance (Actividades Principales):
+1. Localización y replanteo topográfico.
+2. Demolición de pavimento existente y excavación mecánica.
+3. Suministro e instalación de tubería PVC corrugada de 24", 30" y 36".
+4. Construcción de pozos de inspección y sumideros.
+5. Relleno compactado y reconstrucción de pavimento.
+6. Limpieza final y puesta en marcha.
+
+Rubros / Desglose Presupuestal:
+- Obra Civil (Excavaciones, Tubería, Concretos): $2,100,000,000 (84%)
+- Interventoría Técnica y Administrativa: $175,000,000 (7%)
+- Gestión Ambiental y Social: $125,000,000 (5%)
+- Imprevistos y Ajustes: $100,000,000 (4%)
+
+Fuente de Financiación: Sistema General de Regalías (SGR)
+Código CDP: 20260115-001
+
+=== 3. INFORMACIÓN TÉCNICA Y SECTORIAL ===
+Sector Económico: Agua Potable y Saneamiento Básico
+Códigos UNSPSC: 30121700 (Construcción de alcantarillado), 47101500 (Tratamiento de aguas)
+Código CIIU: 4220 (Construcción de proyectos de servicio público)
+Programa (DTS): 3602 - Gestión integral del recurso hídrico
+Subprograma (DTS): Saneamiento básico rural y urbano
+
+=== 4. PLANES DE DESARROLLO ===
+Plan Nacional: (2022-2026) Colombia Potencia Mundial de la Vida
+Plan Departamental: Bolívar Primero 2024-2027
+Plan Municipal: San Pablo Avanza con Equidad 2024-2027
+
+=== 5. CONTEXTO DUMP (COPIAR Y PEGAR ESTO EN "DUMP DATA") ===
+El proyecto consiste en la optimización del alcantarillado pluvial de San Pablo, Bolívar. Actualmente, el 40% del casco urbano sufre inundaciones. La población beneficiada es de aproximadamente 15,000 habitantes. El proyecto cumple con la Resolución 0330 de 2017 (RAS). No se requieren licencias ambientales complejas, solo PMA. El tiempo de ejecución se estima en 6 meses. La interventoría será externa. La Alcaldía aportará los predios (vías públicas).

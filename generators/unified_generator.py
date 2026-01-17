@@ -65,49 +65,48 @@ class UnifiedGenerator:
             "mga_subsidios": generators["mga_subsidios"].generate_complete
         }
         
-        # Execute in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_type = {
-                executor.submit(func, data): doc_type 
-                for doc_type, func in tasks.items()
-            }
-            
-            for future in concurrent.futures.as_completed(future_to_type):
-                doc_type = future_to_type[future]
-                try:
-                    # Note: Most generators return a dict with 'filepath' or similar
-                    # We might need to adjust based on exact return signature of each generator
-                    # EstudiosPrevios: returns filepath (str) or dict? Let's assume consistent interface or handle variance
-                    result = future.result()
-                    
-                    # Handle different return types
-                    filepath = None
-                    if isinstance(result, str):
-                        filepath = result
-                    elif isinstance(result, dict) and "filepath" in result:
-                        filepath = result["filepath"]
-                    
-                    if filepath and os.path.exists(filepath):
-                        results.append({
-                            "type": doc_type,
-                            "status": "success",
-                            "file": filepath
-                        })
-                        files_to_zip.append(filepath)
-                    else:
-                        results.append({
-                            "type": doc_type,
-                            "status": "error",
-                            "error": "File not created or invalid return type"
-                        })
-                        
-                except Exception as e:
+        # Execute sequentially to avoid Rate Limits (429)
+        import time
+        
+        for doc_type, func in tasks.items():
+            try:
+                print(f"Generating {doc_type}...")
+                result = func(data)
+                
+                # Handle different return types
+                filepath = None
+                if isinstance(result, str):
+                    filepath = result
+                elif isinstance(result, dict) and "filepath" in result:
+                    filepath = result["filepath"]
+                
+                if filepath and os.path.exists(filepath):
+                    results.append({
+                        "type": doc_type,
+                        "status": "success",
+                        "file": filepath
+                    })
+                    files_to_zip.append(filepath)
+                else:
                     results.append({
                         "type": doc_type,
                         "status": "error",
-                        "error": str(e)
+                        "error": "File not created or invalid return type"
                     })
-                    print(f"Error generating {doc_type}: {e}")
+                
+                # Adaptive delay to respect Rate Limits
+                # MGA Subsidios is heavy, so we wait longer after it
+                wait_time = 30 if doc_type == "mga_subsidios" else 10
+                print(f"Waiting {wait_time}s to cool down API...")
+                time.sleep(wait_time)
+                    
+            except Exception as e:
+                results.append({
+                    "type": doc_type,
+                    "status": "error",
+                    "error": str(e)
+                })
+                print(f"Error generating {doc_type}: {e}")
 
         # Create ZIP if we have files
         zip_path = None

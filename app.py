@@ -1097,6 +1097,11 @@ def main():
                             )
                 else:
                     st.error("❌ Ocurrió un error al generar los documentos.")
+                    if "error" in result:
+                        st.error(f"Detalle: {result['error']}")
+                    if "results" in result and result["results"]:
+                         with st.expander("Ver detalles de errores"):
+                             st.json(result["results"])
                     
             else:
                 # Individual generation
