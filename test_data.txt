@@ -1,0 +1,62 @@
+=== DATOS DE PRUEBA PARA EL AGENTE MGA ===
+Copie y pegue estos datos en los campos del formulario
+
+=== 1. INFORMACIÓN GENERAL ===
+Municipio: San Pablo
+Departamento: Bolívar
+Entidad: Alcaldía Municipal de San Pablo
+Código BPIN: 2024130000567
+Nombre del Proyecto: MEJORAMIENTO Y AMPLIACIÓN DEL SISTEMA DE ACUEDUCTO RURAL EN LAS VEREDAS DEL MUNICIPIO DE SAN PABLO, BOLÍVAR
+Valor Total: 1,850,000,000
+Duración (días): 240
+
+=== 2. RESPONSABLES ===
+Responsable: Carlos Eduardo Martínez López
+Cargo: Secretario de Planeación e Infraestructura
+Alcalde: María Fernanda Rodríguez Pérez
+
+=== 3. CONTRATACIÓN ===
+Objeto Contractual: Contratar la construcción, mejoramiento y ampliación del sistema de acueducto rural que beneficiará a las veredas La Esperanza, El Progreso, y San Antonio del municipio de San Pablo, Bolívar, incluyendo la instalación de redes de distribución, tanques de almacenamiento, y conexiones domiciliarias.
+
+Modalidad: Licitación Pública
+Número de Contrato: LP-003-2026
+Código CDP: 20260118-002
+Fuente de Financiación: Sistema General de Participaciones (SGP) - Agua Potable
+
+Necesidad/Justificación: El municipio de San Pablo presenta una cobertura de agua potable del 45% en la zona rural, muy por debajo del promedio departamental. Las comunidades de las veredas La Esperanza, El Progreso y San Antonio carecen de acceso continuo a agua potable, dependiendo de pozos artesanales y quebradas que no cumplen con los estándares de calidad. Esta situación genera problemas de salud pública, especialmente enfermedades diarreicas en la población infantil.
+
+Alcance (Actividades):
+1. Construcción de captación en la quebrada La Cristalina
+2. Instalación de planta de tratamiento compacta (PTAP) de 5 L/s
+3. Construcción de tanque de almacenamiento de 200 m³
+4. Instalación de 8.5 km de red de distribución en PVC
+5. Instalación de 350 conexiones domiciliarias
+6. Capacitación a operadores locales
+7. Conformación de Junta Administradora de Acueducto
+
+Rubros/Presupuesto:
+- Obras civiles y construcción: $1,200,000,000 (65%)
+- Equipos y materiales: $350,000,000 (19%)
+- Interventoría: $185,000,000 (10%)
+- Gestión social y ambiental: $75,000,000 (4%)
+- Imprevistos: $40,000,000 (2%)
+
+=== 4. INFORMACIÓN TÉCNICA ===
+Sector: Agua Potable y Saneamiento Básico
+Código CIIU: 3600 (Captación, tratamiento y distribución de agua)
+Códigos UNSPSC: 47101500, 72121500, 40141700
+Programa: 4002 - Acceso al servicio de agua potable
+Subprograma: Construcción de sistemas de acueducto rural
+
+=== 5. PLANES DE DESARROLLO ===
+Plan Nacional: (2022-2026) Colombia Potencia Mundial de la Vida - Pilar Agua para Todos
+Plan Departamental: Bolívar Primero 2024-2027 - Eje Servicios Públicos con Equidad
+Plan Municipal: San Pablo Avanza 2024-2027 - Programa Agua de Vida
+
+=== 6. INDICADORES ===
+Población Beneficiada: 1,750 habitantes (350 familias)
+Indicador de Producto: Número de usuarios nuevos conectados al servicio de acueducto
+Meta del Producto: 350 conexiones domiciliarias
+
+=== 7. CONTEXTO ADICIONAL (DUMP DATA) ===
+El proyecto cuenta con estudios de factibilidad realizados en 2023 por la firma consultora Aguas del Caribe S.A.S. La fuente hídrica seleccionada (quebrada La Cristalina) tiene un caudal promedio de 15 L/s, suficiente para abastecer la demanda proyectada. El proyecto no requiere licencia ambiental, solo Plan de Manejo Ambiental (PMA). Los predios necesarios para la PTAP y el tanque son de propiedad municipal. El proyecto está articulado con el PSMV del municipio y cuenta con concepto favorable de la CAR.

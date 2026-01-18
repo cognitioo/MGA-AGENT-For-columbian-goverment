@@ -259,8 +259,8 @@ class DocumentDataExtractor:
         
         fields_str = ", ".join(all_fields)
         
-        # Use more text for better extraction
-        text_to_analyze = text[:12000] if len(text) > 12000 else text
+        # Use less text to avoid timeout (reduced from 12000)
+        text_to_analyze = text[:6000] if len(text) > 6000 else text
         
         # Build the human message without f-string to avoid brace escaping issues
         human_message = """Extrae los siguientes campos del documento gubernamental colombiano:
