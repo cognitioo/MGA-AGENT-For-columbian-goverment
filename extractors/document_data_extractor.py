@@ -92,7 +92,7 @@ class DocumentDataExtractor:
         """Initialize extractor with optional LLM for AI extraction"""
         self.llm = llm
     
-    def extract_from_file(self, file, file_type: str, doc_type: str) -> Dict[str, Any]:
+    def extract_from_file(self, file, file_type: str, doc_type: str, user_context: str = "") -> Dict[str, Any]:
         """
         Extract data from uploaded file
         
@@ -100,6 +100,7 @@ class DocumentDataExtractor:
             file: Uploaded file object (Streamlit UploadedFile)
             file_type: Extension (.pdf, .docx, .xlsx)
             doc_type: Document type (estudios_previos, mga_subsidios, etc.)
+            user_context: Optional user-provided context for extraction
             
         Returns:
             Dictionary with extracted field values
@@ -125,12 +126,16 @@ class DocumentDataExtractor:
         
         # Extract structured data
         if self.llm:
-            result = self._extract_with_ai(text, doc_type)
+            result = self._extract_with_ai(text, doc_type, user_context)
         else:
             result = self._extract_with_patterns(text, doc_type)
             
         # Add raw text dump for context fallback
         result["context_dump"] = text
+        
+        # Store user context if provided
+        if user_context:
+            result["user_context"] = user_context
         
         return result
     
@@ -242,7 +247,7 @@ class DocumentDataExtractor:
         
         return result
     
-    def _extract_with_ai(self, text: str, doc_type: str) -> Dict[str, str]:
+    def _extract_with_ai(self, text: str, doc_type: str, user_context: str = "") -> Dict[str, str]:
         """Extract data using AI/LLM with improved prompt for better quality"""
         from langchain_core.prompts import ChatPromptTemplate
         from langchain_core.output_parsers import StrOutputParser
@@ -254,7 +259,8 @@ class DocumentDataExtractor:
             "objeto", "necesidad", "alcance", "modalidad", "fuente_financiacion",
             "sector", "codigo_ciiu", "codigos_unspsc", "programa", "subprograma",
             "plan_nacional", "plan_departamental", "plan_municipal",
-            "poblacion_beneficiada", "indicador_producto", "meta_producto"
+            "poblacion_beneficiada", "indicador_producto", "meta_producto",
+            "es_actualizacion"
         ]
         
         fields_str = ", ".join(all_fields)
@@ -262,9 +268,22 @@ class DocumentDataExtractor:
         # Use less text to avoid timeout (reduced from 12000)
         text_to_analyze = text[:6000] if len(text) > 6000 else text
         
+        # Build context section if provided
+        context_section = ""
+        if user_context:
+            context_section = """
+
+===== CONTEXTO DEL USUARIO =====
+""" + user_context + """
+===== FIN DEL CONTEXTO =====
+
+NOTA: El usuario ha proporcionado contexto adicional. Si indica que es una ACTUALIZACIÓN, 
+agrega "es_actualizacion": "Si" al JSON. Prioriza la información según las instrucciones del usuario.
+"""
+        
         # Build the human message without f-string to avoid brace escaping issues
         human_message = """Extrae los siguientes campos del documento gubernamental colombiano:
-""" + fields_str + """
+""" + fields_str + context_section + """
 
 ===== DOCUMENTO COMPLETO =====
 """ + text_to_analyze + """
@@ -284,6 +303,7 @@ cargo: Secretario de Planeación
 objeto: Contratar la construcción...
 necesidad: Se requiere mejorar...
 sector: Agua Potable
+es_actualizacion: No
 
 Responde con JSON usando las claves anteriores."""
 
@@ -343,7 +363,7 @@ INSTRUCCIONES CRÍTICAS:
         return self._extract_with_patterns(text, doc_type)
 
 
-def extract_data_from_upload(uploaded_file, doc_type: str, llm=None) -> Dict[str, Any]:
+def extract_data_from_upload(uploaded_file, doc_type: str, llm=None, user_context: str = "") -> Dict[str, Any]:
     """
     Convenience function to extract data from an uploaded file
     
@@ -351,6 +371,7 @@ def extract_data_from_upload(uploaded_file, doc_type: str, llm=None) -> Dict[str
         uploaded_file: Streamlit UploadedFile object
         doc_type: Type of document to generate
         llm: Optional LLM for AI-powered extraction
+        user_context: Optional user-provided context (e.g., "this is for updating existing document")
         
     Returns:
         Dictionary with extracted field values
@@ -363,4 +384,4 @@ def extract_data_from_upload(uploaded_file, doc_type: str, llm=None) -> Dict[str
     ext = os.path.splitext(filename)[1].lower()
     
     extractor = DocumentDataExtractor(llm=llm)
-    return extractor.extract_from_file(uploaded_file, ext, doc_type)
+    return extractor.extract_from_file(uploaded_file, ext, doc_type, user_context=user_context)

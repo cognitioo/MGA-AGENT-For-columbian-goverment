@@ -139,6 +139,15 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
             help="El sistema extraerá automáticamente los datos del proyecto"
         )
         
+        # Optional context field for updates
+        user_context = st.text_area(
+            "📝 Contexto Adicional (Opcional)",
+            placeholder="Ej: 'Este documento es para ACTUALIZAR el proyecto existente BPIN 2024001234. Mantener los datos de presupuesto pero actualizar las fechas.'",
+            height=80,
+            key=f"{key_prefix}_user_context",
+            help="Use este campo para indicar si es actualización, qué campos priorizar, o cualquier instrucción especial para la IA."
+        )
+        
         if data_file:
             if st.button("🔍 Extraer Datos con IA", key=f"{key_prefix}_extract_btn"):
                 with st.spinner("Extrayendo datos con Groq Llama..."):
@@ -150,7 +159,8 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
                             st.warning(f"No se pudo iniciar IA de extracción: {llm_err}. Usando patrones.")
                             llm = None
                         
-                        extracted = extract_data_from_upload(data_file, doc_type, llm)
+                        # Pass user context to extraction
+                        extracted = extract_data_from_upload(data_file, doc_type, llm, user_context=user_context)
                         
                         if extracted and not extracted.get("error"):
                             st.session_state.extracted_data[doc_type] = extracted
