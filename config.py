@@ -1,13 +1,31 @@
 """
 MGA AI Agent Configuration
 Supports multiple LLM providers: Groq (default), Gemini, OpenAI, Anthropic
+Supports both .env (local) and st.secrets (Streamlit Cloud)
 """
 
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load .env for local development
 load_dotenv()
+
+# --- Helper function to get secrets ---
+def get_secret(key: str, default: str = "") -> str:
+    """
+    Get secret from Streamlit secrets (Cloud) or environment variable (local).
+    Priority: st.secrets > os.environ > default
+    """
+    # Try Streamlit secrets first (for Cloud deployment)
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+    
+    # Fall back to environment variable
+    return os.getenv(key, default)
 
 # --- LLM Configuration ---
 # Default to Groq for fast and free inference
@@ -41,11 +59,11 @@ LLM_PROVIDERS = {
 
 DEFAULT_PROVIDER = "groq"
 
-# --- API Keys ---
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+# --- API Keys (loaded from secrets or env) ---
+GOOGLE_API_KEY = get_secret("GOOGLE_API_KEY")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
+ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
+GROQ_API_KEY = get_secret("GROQ_API_KEY")
 
 # --- Database ---
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "database", "mga_agent.db")
