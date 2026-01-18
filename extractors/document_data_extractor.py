@@ -262,6 +262,31 @@ class DocumentDataExtractor:
         # Use more text for better extraction
         text_to_analyze = text[:12000] if len(text) > 12000 else text
         
+        # Build the human message without f-string to avoid brace escaping issues
+        human_message = """Extrae los siguientes campos del documento gubernamental colombiano:
+""" + fields_str + """
+
+===== DOCUMENTO COMPLETO =====
+""" + text_to_analyze + """
+===== FIN DEL DOCUMENTO =====
+
+IMPORTANTE: Analiza tablas, encabezados, y texto en cualquier formato.
+Responde ÚNICAMENTE con un JSON válido. Ejemplo de formato:
+municipio: San Pablo
+departamento: Bolívar
+entidad: Alcaldía Municipal
+bpin: 2024000001234
+nombre_proyecto: Construcción de acueducto
+valor_total: 500000000
+duracion: 180
+responsable: Juan Pérez
+cargo: Secretario de Planeación
+objeto: Contratar la construcción...
+necesidad: Se requiere mejorar...
+sector: Agua Potable
+
+Responde con JSON usando las claves anteriores."""
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Eres un experto en extracción de datos de documentos gubernamentales colombianos.
 Tu especialidad es extraer información de:
@@ -281,45 +306,9 @@ INSTRUCCIONES CRÍTICAS:
 7. Para "municipio" y "departamento" busca: ubicación, localización geográfica
 8. Para "responsable" busca: secretario, formulador, representante legal
 9. Si no encuentras un campo exacto, busca sinónimos o información relacionada
-10. NO inventes datos. Si no está, usa null.
+10. NO inventes datos. Si no está, omítelo del JSON.
 11. Responde SOLO con JSON válido, nada más."""),
-            ("human", f"""Extrae los siguientes campos del documento gubernamental colombiano:
-{fields_str}
-
-===== DOCUMENTO COMPLETO =====
-{text_to_analyze}
-===== FIN DEL DOCUMENTO =====
-
-IMPORTANTE: Analiza tablas, encabezados, y texto en cualquier formato.
-Responde ÚNICAMENTE con un JSON válido en este formato exacto:
-{{
-  "municipio": "valor o null",
-  "departamento": "valor o null",
-  "entidad": "valor o null",
-  "bpin": "valor o null",
-  "nombre_proyecto": "valor o null",
-  "valor_total": "valor numérico o null",
-  "duracion": "valor numérico en días o null",
-  "responsable": "valor o null",
-  "cargo": "valor o null",
-  "alcalde": "valor o null",
-  "objeto": "valor o null",
-  "necesidad": "valor o null",
-  "alcance": "valor o null",
-  "modalidad": "valor o null",
-  "fuente_financiacion": "valor o null",
-  "sector": "valor o null",
-  "codigo_ciiu": "valor o null",
-  "codigos_unspsc": "valor o null",
-  "programa": "valor o null",
-  "subprograma": "valor o null",
-  "plan_nacional": "valor o null",
-  "plan_departamental": "valor o null",
-  "plan_municipal": "valor o null",
-  "poblacion_beneficiada": "valor o null",
-  "indicador_producto": "valor o null",
-  "meta_producto": "valor o null"
-}}""")
+            ("human", human_message)
         ])
         
         try:
