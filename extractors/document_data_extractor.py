@@ -247,28 +247,32 @@ class DocumentDataExtractor:
         from langchain_core.prompts import ChatPromptTemplate
         from langchain_core.output_parsers import StrOutputParser
         
-        # Define fields for each document type
-        fields_by_type = {
-            "estudios_previos": ["entidad", "objeto", "presupuesto", "plazo", "modalidad", "sector", "descripcion"],
-            "analisis_sector": ["sector", "entidad", "objeto", "valor_estimado"],
-            "dts": ["municipio", "departamento", "entidad", "proyecto", "valor"],
-            "certificaciones": ["nombre_proyecto", "municipio", "departamento", "valor", "responsable"],
-            "mga_subsidios": ["municipio", "departamento", "entidad", "bpin", "nombre_proyecto", "valor_total", "duracion", "responsable", "cargo", "plan_nacional", "plan_departamental", "plan_municipal"]
-        }
+        # Comprehensive field list for all document types (unified)
+        all_fields = [
+            "municipio", "departamento", "entidad", "bpin", "nombre_proyecto",
+            "valor_total", "duracion", "responsable", "cargo", "alcalde",
+            "objeto", "necesidad", "alcance", "modalidad", "fuente_financiacion",
+            "sector", "codigo_ciiu", "codigos_unspsc", "programa", "subprograma",
+            "plan_nacional", "plan_departamental", "plan_municipal"
+        ]
         
-        fields = fields_by_type.get(doc_type, [])
-        fields_str = ", ".join(fields)
+        fields_str = ", ".join(all_fields)
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "Eres un experto en extracción de datos de documentos gubernamentales colombianos. Extrae los campos solicitados del texto proporcionado. Responde SOLO con JSON válido."),
+            ("system", """Eres un experto en extracción de datos de documentos gubernamentales colombianos (MGA, contratos, convenios).
+Tu tarea es extraer la mayor cantidad posible de campos del texto proporcionado.
+- Si un campo no está en el documento, usa null.
+- Extrae valores exactos, no inventes datos.
+- Para valores numéricos (dinero, duración) incluye solo el número.
+- Responde SOLO con JSON válido."""),
             ("human", f"""Extrae los siguientes campos del documento:
 {fields_str}
 
 DOCUMENTO:
-{text[:4000]}
+{text[:6000]}
 
-Responde con JSON:
-{{{", ".join([f'"{f}": "valor o null"' for f in fields])}}}""")
+Responde con JSON válido (solo los campos que encuentres):
+{{{", ".join([f'"{f}": "valor o null"' for f in all_fields])}}}""")
         ])
         
         try:
@@ -276,9 +280,12 @@ Responde con JSON:
             response = chain.invoke({})
             
             # Parse JSON response
+            import json
             json_match = re.search(r'\{[^{}]+\}', response, re.DOTALL)
             if json_match:
-                return json.loads(json_match.group())
+                result = json.loads(json_match.group())
+                # Filter out null values
+                return {k: v for k, v in result.items() if v and v != "null"}
         except Exception as e:
             print(f"AI extraction error: {e}")
         

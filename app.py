@@ -140,26 +140,27 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
         )
         
         if data_file:
-            if st.button("🔍 Extraer Datos", key=f"{key_prefix}_extract_btn"):
-                with st.spinner("Extrayendo datos del documento..."):
+            if st.button("🔍 Extraer Datos con IA", key=f"{key_prefix}_extract_btn"):
+                with st.spinner("Extrayendo datos con Gemini Flash..."):
                     try:
-                        # Get LLM for AI extraction if available
-                        model = st.session_state.get('selected_model', 'groq')
+                        # Always use cheap Gemini Flash for extraction
                         try:
-                            llm = get_llm(model)
-                        except:
+                            llm = get_llm("gemini_flash")
+                        except Exception as llm_err:
+                            st.warning(f"No se pudo iniciar IA de extracción: {llm_err}. Usando patrones.")
                             llm = None
                         
                         extracted = extract_data_from_upload(data_file, doc_type, llm)
                         
                         if extracted and not extracted.get("error"):
                             st.session_state.extracted_data[doc_type] = extracted
-                            st.success(f"✅ Se extrajeron {len(extracted)} campos del documento")
+                            st.success(f"✅ IA extrajo {len(extracted)} campos del documento")
                             
                             # Show extracted data
                             with st.expander("Ver datos extraídos", expanded=True):
                                 for field, value in extracted.items():
-                                    st.text(f"{field}: {value[:100]}..." if len(str(value)) > 100 else f"{field}: {value}")
+                                    if field != "context_dump":  # Don't show full dump in preview
+                                        st.text(f"{field}: {value[:100]}..." if len(str(value)) > 100 else f"{field}: {value}")
                         else:
                             st.warning("No se pudieron extraer datos del documento. Complete el formulario manualmente.")
                     except Exception as e:

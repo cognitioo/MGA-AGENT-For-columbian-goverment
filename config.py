@@ -22,6 +22,11 @@ LLM_PROVIDERS = {
         "model": "gemini-2.5-pro",
         "env_key": "GOOGLE_API_KEY",
     },
+    "gemini_flash": {
+        "name": "Gemini Flash (Barato)",
+        "model": "gemini-2.0-flash",
+        "env_key": "GOOGLE_API_KEY",
+    },
     "openai": {
         "name": "OpenAI GPT-4",
         "model": "gpt-4-turbo-preview",
@@ -89,6 +94,13 @@ def get_llm(provider: str = None):
             model=LLM_PROVIDERS["gemini"]["model"],
             google_api_key=GOOGLE_API_KEY,
             temperature=0.3,
+        )
+    elif provider == "gemini_flash":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=LLM_PROVIDERS["gemini_flash"]["model"],
+            google_api_key=GOOGLE_API_KEY,
+            temperature=0.1,  # Lower temp for extraction
         )
     elif provider == "openai":
         from langchain_openai import ChatOpenAI
