@@ -243,7 +243,7 @@ class DocumentDataExtractor:
         return result
     
     def _extract_with_ai(self, text: str, doc_type: str) -> Dict[str, str]:
-        """Extract data using AI/LLM"""
+        """Extract data using AI/LLM with improved prompt for better quality"""
         from langchain_core.prompts import ChatPromptTemplate
         from langchain_core.output_parsers import StrOutputParser
         
@@ -253,39 +253,100 @@ class DocumentDataExtractor:
             "valor_total", "duracion", "responsable", "cargo", "alcalde",
             "objeto", "necesidad", "alcance", "modalidad", "fuente_financiacion",
             "sector", "codigo_ciiu", "codigos_unspsc", "programa", "subprograma",
-            "plan_nacional", "plan_departamental", "plan_municipal"
+            "plan_nacional", "plan_departamental", "plan_municipal",
+            "poblacion_beneficiada", "indicador_producto", "meta_producto"
         ]
         
         fields_str = ", ".join(all_fields)
         
+        # Use more text for better extraction
+        text_to_analyze = text[:12000] if len(text) > 12000 else text
+        
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Eres un experto en extracción de datos de documentos gubernamentales colombianos (MGA, contratos, convenios).
-Tu tarea es extraer la mayor cantidad posible de campos del texto proporcionado.
-- Si un campo no está en el documento, usa null.
-- Extrae valores exactos, no inventes datos.
-- Para valores numéricos (dinero, duración) incluye solo el número.
-- Responde SOLO con JSON válido."""),
-            ("human", f"""Extrae los siguientes campos del documento:
+            ("system", """Eres un experto en extracción de datos de documentos gubernamentales colombianos.
+Tu especialidad es extraer información de:
+- Metodología General Ajustada (MGA)
+- Estudios Previos
+- Convenios Interadministrativos
+- Certificaciones municipales
+- Documentos Técnicos de Soporte (DTS)
+
+INSTRUCCIONES CRÍTICAS:
+1. Lee TODO el documento cuidadosamente
+2. Extrae TODOS los valores que encuentres, incluso si están en tablas o listas
+3. Para "valor_total" busca: presupuesto, valor del contrato, monto, costo total
+4. Para "objeto" busca: objeto contractual, objeto del convenio, descripción del proyecto
+5. Para "necesidad" busca: justificación, problema a resolver, antecedentes
+6. Para "alcance" busca: actividades, productos, entregables
+7. Para "municipio" y "departamento" busca: ubicación, localización geográfica
+8. Para "responsable" busca: secretario, formulador, representante legal
+9. Si no encuentras un campo exacto, busca sinónimos o información relacionada
+10. NO inventes datos. Si no está, usa null.
+11. Responde SOLO con JSON válido, nada más."""),
+            ("human", f"""Extrae los siguientes campos del documento gubernamental colombiano:
 {fields_str}
 
-DOCUMENTO:
-{text[:6000]}
+===== DOCUMENTO COMPLETO =====
+{text_to_analyze}
+===== FIN DEL DOCUMENTO =====
 
-Responde con JSON válido (solo los campos que encuentres):
-{{{", ".join([f'"{f}": "valor o null"' for f in all_fields])}}}""")
+IMPORTANTE: Analiza tablas, encabezados, y texto en cualquier formato.
+Responde ÚNICAMENTE con un JSON válido en este formato exacto:
+{{
+  "municipio": "valor o null",
+  "departamento": "valor o null",
+  "entidad": "valor o null",
+  "bpin": "valor o null",
+  "nombre_proyecto": "valor o null",
+  "valor_total": "valor numérico o null",
+  "duracion": "valor numérico en días o null",
+  "responsable": "valor o null",
+  "cargo": "valor o null",
+  "alcalde": "valor o null",
+  "objeto": "valor o null",
+  "necesidad": "valor o null",
+  "alcance": "valor o null",
+  "modalidad": "valor o null",
+  "fuente_financiacion": "valor o null",
+  "sector": "valor o null",
+  "codigo_ciiu": "valor o null",
+  "codigos_unspsc": "valor o null",
+  "programa": "valor o null",
+  "subprograma": "valor o null",
+  "plan_nacional": "valor o null",
+  "plan_departamental": "valor o null",
+  "plan_municipal": "valor o null",
+  "poblacion_beneficiada": "valor o null",
+  "indicador_producto": "valor o null",
+  "meta_producto": "valor o null"
+}}""")
         ])
         
         try:
             chain = prompt | self.llm | StrOutputParser()
             response = chain.invoke({})
             
-            # Parse JSON response
+            # Parse JSON response - try multiple patterns
             import json
-            json_match = re.search(r'\{[^{}]+\}', response, re.DOTALL)
-            if json_match:
-                result = json.loads(json_match.group())
-                # Filter out null values
-                return {k: v for k, v in result.items() if v and v != "null"}
+            
+            # Try to find JSON in response
+            json_patterns = [
+                r'\{[\s\S]*\}',  # Any JSON object
+                r'```json\s*([\s\S]*?)\s*```',  # Code block
+                r'```\s*([\s\S]*?)\s*```',  # Generic code block
+            ]
+            
+            for pattern in json_patterns:
+                match = re.search(pattern, response, re.DOTALL)
+                if match:
+                    try:
+                        json_str = match.group(1) if '```' in pattern else match.group(0)
+                        result = json.loads(json_str)
+                        # Filter out null values and empty strings
+                        return {k: v for k, v in result.items() if v and v != "null" and str(v).strip()}
+                    except json.JSONDecodeError:
+                        continue
+                        
         except Exception as e:
             print(f"AI extraction error: {e}")
         

@@ -156,15 +156,42 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
                             st.session_state.extracted_data[doc_type] = extracted
                             st.success(f"✅ IA extrajo {len(extracted)} campos del documento")
                             
-                            # Show extracted data
-                            with st.expander("Ver datos extraídos", expanded=True):
-                                for field, value in extracted.items():
-                                    if field != "context_dump":  # Don't show full dump in preview
-                                        st.text(f"{field}: {value[:100]}..." if len(str(value)) > 100 else f"{field}: {value}")
+                            # Store raw JSON for display
+                            st.session_state[f"{key_prefix}_raw_json"] = extracted
                         else:
                             st.warning("No se pudieron extraer datos del documento. Complete el formulario manualmente.")
                     except Exception as e:
                         st.error(f"Error al extraer datos: {str(e)}")
+        
+        # Show editable JSON if extraction was done
+        raw_json_key = f"{key_prefix}_raw_json"
+        if raw_json_key in st.session_state and st.session_state[raw_json_key]:
+            import json
+            raw_data = st.session_state[raw_json_key]
+            
+            st.markdown("### 📋 Datos Extraídos por IA (JSON Editable)")
+            st.info("Puede copiar valores de aquí o editar el JSON y volver a cargar.")
+            
+            # Show as editable text area
+            json_str = json.dumps({k: v for k, v in raw_data.items() if k != "context_dump"}, indent=2, ensure_ascii=False)
+            edited_json = st.text_area(
+                "JSON de Datos Extraídos",
+                value=json_str,
+                height=300,
+                key=f"{key_prefix}_json_edit"
+            )
+            
+            # Button to apply edited JSON
+            if st.button("🔄 Aplicar JSON Editado", key=f"{key_prefix}_apply_json"):
+                try:
+                    parsed = json.loads(edited_json)
+                    # Merge with existing data, keeping context_dump
+                    merged = {**st.session_state.extracted_data.get(doc_type, {}), **parsed}
+                    st.session_state.extracted_data[doc_type] = merged
+                    st.success("✅ JSON aplicado! Los campos del formulario se actualizarán.")
+                    st.rerun()
+                except json.JSONDecodeError as je:
+                    st.error(f"JSON inválido: {je}")
     
     return st.session_state.extracted_data.get(doc_type, {})
 
