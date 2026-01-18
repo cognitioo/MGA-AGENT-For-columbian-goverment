@@ -141,11 +141,11 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
         
         if data_file:
             if st.button("🔍 Extraer Datos con IA", key=f"{key_prefix}_extract_btn"):
-                with st.spinner("Extrayendo datos con Gemini Flash..."):
+                with st.spinner("Extrayendo datos con Groq Llama..."):
                     try:
-                        # Always use cheap Gemini Flash for extraction
+                        # Use Groq Llama for extraction (30k TPM limit - much higher)
                         try:
-                            llm = get_llm("gemini_flash")
+                            llm = get_llm("groq_llama")
                         except Exception as llm_err:
                             st.warning(f"No se pudo iniciar IA de extracción: {llm_err}. Usando patrones.")
                             llm = None

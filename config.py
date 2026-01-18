@@ -35,6 +35,11 @@ LLM_PROVIDERS = {
         "model": "openai/gpt-oss-120b",
         "env_key": "GROQ_API_KEY",
     },
+    "groq_llama": {
+        "name": "Groq Llama (Extracción)",
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "env_key": "GROQ_API_KEY",
+    },
     "gemini": {
         "name": "Google Gemini",
         "model": "gemini-2.5-pro",
@@ -105,6 +110,14 @@ def get_llm(provider: str = None):
             api_key=GROQ_API_KEY,
             base_url="https://api.groq.com/openai/v1",
             temperature=0.3,
+        )
+    elif provider == "groq_llama":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=LLM_PROVIDERS["groq_llama"]["model"],
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+            temperature=0.1,  # Lower temp for extraction accuracy
         )
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
