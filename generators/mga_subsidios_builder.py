@@ -1224,12 +1224,16 @@ class MGASubsidiosBuilder:
                 row.cells[5].text = str(item.get("beneficiarios", ""))
     
     def _add_page_24_focalizacion(self, content: dict):
-        """Add Page 24 - Focalización"""
-        self._add_header("Programación", "Focalización")
+        """Add Page 24 - Focalización (skip if no data)"""
+        tabla_focalizacion = content.get("tabla_focalizacion", [])
         
+        # Skip this section entirely if no data
+        if not tabla_focalizacion:
+            return
+        
+        self._add_header("Programación", "Focalización")
         self._add_section_title("Focalización")
         
-        # Focalización table (empty in template)
         table = self.doc.add_table(rows=1, cols=4)
         table.style = 'Table Grid'
         
@@ -1240,8 +1244,6 @@ class MGASubsidiosBuilder:
             for run in table.rows[0].cells[i].paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
         
-        # Add empty rows if data exists
-        tabla_focalizacion = content.get("tabla_focalizacion", [])
         for item in tabla_focalizacion:
             row = table.add_row()
             row.cells[0].text = str(item.get("politica", ""))

@@ -99,29 +99,29 @@ class MGASubsidiosGenerator:
         chain_1_5 = self._create_chain(PROMPT_MGA_SUBSIDIOS_PAGINAS_1_5)
         response_1_5 = chain_1_5.invoke(invoke_data)
         ai_content_1_5 = self._extract_json(response_1_5)
-        print("MGA Page 1-5 done. Waiting 10s...")
-        time.sleep(10) # Wait to avoid Rate Limit
+        print("MGA Page 1-5 done. Waiting 3s...")
+        time.sleep(3) # Wait to avoid Rate Limit
         
         # Generate pages 6-11
         chain_6_11 = self._create_chain(PROMPT_MGA_SUBSIDIOS_PAGINAS_6_11)
         response_6_11 = chain_6_11.invoke(invoke_data)
         ai_content_6_11 = self._extract_json(response_6_11)
-        print("MGA Page 6-11 done. Waiting 10s...")
-        time.sleep(10) # Wait
+        print("MGA Page 6-11 done. Waiting 3s...")
+        time.sleep(3) # Wait
         
         # Generate pages 12-16
         chain_12_16 = self._create_chain(PROMPT_MGA_SUBSIDIOS_PAGINAS_12_16)
         response_12_16 = chain_12_16.invoke(invoke_data)
         ai_content_12_16 = self._extract_json(response_12_16)
-        print("MGA Page 12-16 done. Waiting 10s...")
-        time.sleep(10) # Wait
+        print("MGA Page 12-16 done. Waiting 3s...")
+        time.sleep(3) # Wait
         
         # Generate pages 17-21
         chain_17_21 = self._create_chain(PROMPT_MGA_SUBSIDIOS_PAGINAS_17_21)
         response_17_21 = chain_17_21.invoke(invoke_data)
         ai_content_17_21 = self._extract_json(response_17_21)
-        print("MGA Page 17-21 done. Waiting 10s...")
-        time.sleep(10) # Wait
+        print("MGA Page 17-21 done. Waiting 3s...")
+        time.sleep(3) # Wait
         
         # Generate pages 22-24
         chain_22_24 = self._create_chain(PROMPT_MGA_SUBSIDIOS_PAGINAS_22_24)

@@ -94,9 +94,9 @@ class UnifiedGenerator:
                         "error": "File not created or invalid return type"
                     })
                 
-                # Adaptive delay to respect Rate Limits
+                # Adaptive delay to respect Rate Limits (reduced for faster gen)
                 # MGA Subsidios is heavy, so we wait longer after it
-                wait_time = 30 if doc_type == "mga_subsidios" else 10
+                wait_time = 5 if doc_type == "mga_subsidios" else 3
                 print(f"Waiting {wait_time}s to cool down API...")
                 time.sleep(wait_time)
                     
