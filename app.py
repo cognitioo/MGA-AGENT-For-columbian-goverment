@@ -729,13 +729,30 @@ def render_sidebar():
             with col1:
                 if st.button("🚀 Procesar Edición", key="process_edit_btn", use_container_width=True, type="primary"):
                     if prev_doc and edit_prompt:
-                        st.session_state.start_edit_process = True
-                        st.session_state.edit_mode_selected = edit_mode
+                        # Extract text from uploaded document
+                        from extractors.document_data_extractor import extract_data_from_upload
+                        prev_doc.seek(0)
+                        with st.spinner("Extrayendo datos del documento..."):
+                            extracted = extract_data_from_upload(
+                                prev_doc,
+                                "mga_subsidios",
+                                user_context=edit_prompt
+                            )
+                            if extracted and extracted.get("success"):
+                                # Store extracted data for use in form
+                                st.session_state.extracted_data["mga_subsidios"] = extracted.get("data", {})
+                                st.session_state.extracted_data["unified"] = extracted.get("data", {})
+                                st.session_state["unified_raw_json"] = extracted.get("data", {})
+                                st.session_state.edit_instructions_text = edit_prompt
+                                st.success("✅ Datos extraídos! Ahora puede generar el documento actualizado.")
+                                st.rerun()
+                            else:
+                                st.error("❌ No se pudo extraer datos del documento")
                     else:
                         st.warning("⚠️ Suba un documento y describa los cambios")
             with col2:
                 if st.button("🗑️ Limpiar", key="clear_edit_btn", use_container_width=True):
-                    for key in ["previous_document", "edit_instructions_text", "selected_edit_pages"]:
+                    for key in ["previous_document", "edit_instructions_text", "selected_edit_pages", "extracted_data"]:
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
