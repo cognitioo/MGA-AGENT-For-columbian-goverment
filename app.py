@@ -738,11 +738,11 @@ def render_sidebar():
                                 "mga_subsidios",
                                 user_context=edit_prompt
                             )
-                            if extracted and extracted.get("success"):
+                            if extracted and not extracted.get("error"):
                                 # Store extracted data for use in form
-                                st.session_state.extracted_data["mga_subsidios"] = extracted.get("data", {})
-                                st.session_state.extracted_data["unified"] = extracted.get("data", {})
-                                st.session_state["unified_raw_json"] = extracted.get("data", {})
+                                st.session_state.extracted_data["mga_subsidios"] = extracted
+                                st.session_state.extracted_data["unified"] = extracted
+                                st.session_state["unified_raw_json"] = extracted
                                 st.session_state.edit_instructions_text = edit_prompt
                                 st.success("✅ Datos extraídos! Ahora puede generar el documento actualizado.")
                                 st.rerun()
