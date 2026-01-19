@@ -744,7 +744,23 @@ def render_sidebar():
                                 st.session_state.extracted_data["unified"] = extracted
                                 st.session_state["unified_raw_json"] = extracted
                                 st.session_state.edit_instructions_text = edit_prompt
-                                st.success("✅ Datos extraídos! Ahora puede generar el documento actualizado.")
+                                
+                                # Update widget session state to reflect changes immediately
+                                # Map common fields to likely widget keys
+                                widget_prefixes = ["mga_", "uni_", "ep_", "as_", "dts_", "cert_"]
+                                for key, value in extracted.items():
+                                    if value:
+                                        # Try to find matching widget keys
+                                        for prefix in widget_prefixes:
+                                            widget_key = f"{prefix}{key}"
+                                            if widget_key in st.session_state:
+                                                st.session_state[widget_key] = value
+                                        
+                                        # Also try exact matches (some fields might match directly)
+                                        if key in st.session_state:
+                                            st.session_state[key] = value
+
+                                st.success("✅ Datos extraídos! El formulario se ha actualizado.")
                                 st.rerun()
                             else:
                                 st.error("❌ No se pudo extraer datos del documento")
@@ -1544,6 +1560,102 @@ def generate_document(doc_type: str, data: dict, model: str):
         return None, None
 
 
+def run_generation_logic(doc_type: str, data: dict, model: str):
+    """
+    Shared generation logic to be used by both main panel and sidebar buttons.
+    Returns: result_data (dict or tuple depending on mode)
+    """
+    # Check for skip validation (if not already checked by caller)
+    if 'skip_validation' not in st.session_state:
+        st.session_state.skip_validation = False
+    
+    # Validation is assumed to be done or skipped by the caller/UI state by the time we click Generate
+    # But we can do a quick sanity check on project name
+    project_name = data.get("nombre_proyecto", data.get("proyecto", ""))
+    if not project_name:
+        st.error("⚠️ Por favor ingrese al menos el nombre del proyecto.")
+        return None
+
+    # Clear previous generation state
+    st.session_state.generated_content = None
+    st.session_state.generated_file = None
+    
+    # Progress feedback
+    with st.spinner(f"Generando {doc_type} con {model}..."):
+        if doc_type == "unified":
+            generator = UnifiedGenerator()
+            # Progress bar for unified generation
+            progress_bar = st.progress(0, text="Iniciando generación paralela de 5 documentos...")
+            result = generator.generate_all(data, model)
+            progress_bar.progress(100, text="Generación Completada!")
+            return result
+        else:
+            # Individual generation
+            content, filepath = generate_document(doc_type, data, model)
+            if content and filepath:
+                # Save generation to session state for persistence
+                st.session_state.generated_content = content
+                st.session_state.generated_file = filepath
+                
+                # Track in generation history
+                from datetime import datetime
+                st.session_state.generation_history.append({
+                    "type": doc_type,
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "file": os.path.basename(filepath) if filepath else "N/A"
+                })
+                st.session_state.last_generation_time = datetime.now()
+                return (content, filepath)
+            return None
+
+
+def render_sidebar_generation_controls(doc_type: str, data: dict, selected_model: str, validation_issues: list):
+    """Render generation and download controls in the sidebar"""
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### ⚡ Acciones")
+        
+        # Validation Status Summary
+        if validation_issues:
+            crit = len([i for i in validation_issues if i[1] == "critical"])
+            warn = len([i for i in validation_issues if i[1] == "warning"])
+            if crit > 0:
+                st.error(f"⛔ {crit} errores críticos")
+            elif warn > 0:
+                st.warning(f"⚠️ {warn} recomendaciones")
+            else:
+                st.success("✅ Datos validados")
+        
+        # Generate Button
+        if st.button("🚀 Generar Documento", key="sidebar_generate_btn", type="primary", use_container_width=True):
+            # Check validation
+            has_fake_data = any("PROHIBIDO" in issue[2] for issue in validation_issues if len(issue) > 2)
+            if has_fake_data:
+                st.error("Datos incorrectos. Revise el panel principal.")
+            else:
+                result = run_generation_logic(doc_type, data, selected_model)
+                if result:
+                    st.success("Generación completada!")
+                    st.rerun() # Rerun to show download buttons
+        
+        # Download Button (if file is ready)
+        if st.session_state.generated_file and os.path.exists(st.session_state.generated_file):
+            st.markdown("### 📥 Descarga")
+            file_path = st.session_state.generated_file
+            file_name = os.path.basename(file_path)
+            
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    label=f"⬇️ Descargar {file_name}",
+                    data=f,
+                    file_name=file_name,
+                    mime="application/pdf" if file_path.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key="sidebar_download_btn",
+                    use_container_width=True
+                )
+
+
+
 def main():
     """Main application"""
     # Render sidebar and get selected model
@@ -1621,90 +1733,53 @@ def main():
     
     st.markdown("---")
     
-    # Generate button
+    # Call sidebar generation controls
+    render_sidebar_generation_controls(doc_type, data, selected_model, validation_issues)
+
+    # Generate button (Main Panel)
     if st.button("🚀 Generar Documento(s)", type="primary", use_container_width=True):
-        # Check for skip validation
-        if 'skip_validation' not in st.session_state:
-            st.session_state.skip_validation = False
-        
-        # Validate data
-        project_name = data.get("nombre_proyecto", data.get("proyecto", ""))
-        
-        if not project_name:
-            st.warning("⚠️ Por favor ingrese al menos el nombre del proyecto.")
-            return
-        
-        # Check for critical errors with fake data
+        # Check validation
         has_fake_data = any("PROHIBIDO" in issue[2] for issue in validation_issues if len(issue) > 2)
         if has_fake_data:
             st.error("⛔ No se puede generar con datos de ejemplo/prueba. Por favor use datos reales.")
-            return
-
-        # Clear previous generation state
-        st.session_state.generated_content = None
-        st.session_state.generated_file = None
-
-        # Show spinner and generate
-        with st.spinner("Generando documento(s) con Inteligencia Artificial..."):
+        else:
+            # RUN SHARED LOGIC
+            result = run_generation_logic(doc_type, data, selected_model)
             
-            if doc_type == "unified":
-                generator = UnifiedGenerator()
-                
-                # Progress bar for unified generation
-                progress_bar = st.progress(0, text="Iniciando generación paralela de 5 documentos...")
-                
-                # Execute generation
-                result = generator.generate_all(data, selected_model)
-                
-                progress_bar.progress(100, text="Generación Completada!")
-                
-                if result["success"]:
-                    st.success(f"✅ Se generaron exitosamente {len(result['results'])} documentos.")
-                    
-                    # Show individual results
-                    for res in result["results"]:
-                        if res["status"] == "success":
-                            file_name = os.path.basename(res["file"])
-                            st.write(f"📄 {res['type'].replace('_', ' ').title()}: **{file_name}**")
-                        else:
-                            st.error(f"❌ Error en {res['type']}: {res.get('error', 'Unknown')}")
-                    
-                    # Unified ZIP Download
-                    if result.get("zip_file"):
-                        with open(result["zip_file"], "rb") as f:
-                            st.download_button(
-                                label="⬇️ Descargar TODOS los Documentos (ZIP)",
-                                data=f,
-                                file_name=os.path.basename(result["zip_file"]),
-                                mime="application/zip",
-                                key="unified_download"
-                            )
+            if result:
+                if doc_type == "unified":
+                    # Unified result handling
+                    if result["success"]:
+                        st.success(f"✅ Se generaron exitosamente {len(result['results'])} documentos.")
+                        
+                        # Show individual results
+                        for res in result["results"]:
+                            if res["status"] == "success":
+                                file_name = os.path.basename(res["file"])
+                                st.write(f"📄 {res['type'].replace('_', ' ').title()}: **{file_name}**")
+                            else:
+                                st.error(f"❌ Error en {res['type']}: {res.get('error', 'Unknown')}")
+                        
+                        # Unified ZIP Download
+                        if result.get("zip_file"):
+                            with open(result["zip_file"], "rb") as f:
+                                st.download_button(
+                                    label="⬇️ Descargar TODOS los Documentos (ZIP)",
+                                    data=f,
+                                    file_name=os.path.basename(result["zip_file"]),
+                                    mime="application/zip",
+                                    key="unified_download"
+                                )
+                    else:
+                        st.error("❌ Ocurrió un error al generar los documentos.")
+                        if "error" in result:
+                            st.error(f"Detalle: {result['error']}")
+                        if "results" in result and result["results"]:
+                             with st.expander("Ver detalles de errores"):
+                                 st.json(result["results"])
                 else:
-                    st.error("❌ Ocurrió un error al generar los documentos.")
-                    if "error" in result:
-                        st.error(f"Detalle: {result['error']}")
-                    if "results" in result and result["results"]:
-                         with st.expander("Ver detalles de errores"):
-                             st.json(result["results"])
-                    
-            else:
-                # Individual generation
-                content, filepath = generate_document(doc_type, data, selected_model)
-                
-                if content and filepath:
-                    # Save generation to session state for persistence
-                    st.session_state.generated_content = content
-                    st.session_state.generated_file = filepath
-                    
-                    # Track in generation history
-                    from datetime import datetime
-                    st.session_state.generation_history.append({
-                        "type": doc_type,
-                        "time": datetime.now().strftime("%H:%M:%S"),
-                        "file": os.path.basename(filepath) if filepath else "N/A"
-                    })
-                    st.session_state.last_generation_time = datetime.now()
-                    
+                    # Individual result handling
+                    content, filepath = result
                     st.success("✅ Documento generado exitosamente!")
                     
                     # Download button
