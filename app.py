@@ -1570,15 +1570,57 @@ def main():
     else:  # mga_subsidios
         data = render_mga_subsidios_form()
     
+    # ═══════════════════════════════════════════════════════════════
+    # PRE-GENERATION VALIDATION PANEL
+    # ═══════════════════════════════════════════════════════════════
+    
+    # Run validation on current data
+    validation_issues = validate_form_data(data, doc_type)
+    
+    if validation_issues:
+        st.markdown("### 🔍 Validación de Datos")
+        
+        critical_count = len([i for i in validation_issues if i[1] == "critical"])
+        warning_count = len([i for i in validation_issues if i[1] == "warning"])
+        info_count = len([i for i in validation_issues if i[1] == "info"])
+        
+        if critical_count > 0:
+            st.error(f"⛔ {critical_count} problema(s) crítico(s) encontrado(s)")
+        if warning_count > 0:
+            st.warning(f"⚠️ {warning_count} campo(s) recomendado(s) faltante(s)")
+        if info_count > 0:
+            st.info(f"ℹ️ {info_count} campo(s) opcional(es) faltante(s)")
+        
+        with st.expander("Ver detalles de validación", expanded=True):
+            for field, severity, message in validation_issues:
+                if severity == "critical":
+                    st.error(message)
+                elif severity == "warning":
+                    st.warning(message)
+                else:
+                    st.caption(message)
+        
+        st.caption("💡 Puede corregir los campos arriba o continuar de todos modos.")
+    
     st.markdown("---")
     
     # Generate button
-    if st.button("Generar Documento(s)", type="primary"):
+    if st.button("🚀 Generar Documento(s)", type="primary", use_container_width=True):
+        # Check for skip validation
+        if 'skip_validation' not in st.session_state:
+            st.session_state.skip_validation = False
+        
         # Validate data
         project_name = data.get("nombre_proyecto", data.get("proyecto", ""))
         
         if not project_name:
             st.warning("⚠️ Por favor ingrese al menos el nombre del proyecto.")
+            return
+        
+        # Check for critical errors with fake data
+        has_fake_data = any("PROHIBIDO" in issue[2] for issue in validation_issues if len(issue) > 2)
+        if has_fake_data:
+            st.error("⛔ No se puede generar con datos de ejemplo/prueba. Por favor use datos reales.")
             return
 
         # Clear previous generation state
