@@ -323,8 +323,52 @@ def render_sidebar():
             # Store in separate key to avoid widget key conflict
             if edit_prompt:
                 st.session_state.edit_instructions_text = edit_prompt
-        
-        st.markdown("---")
+            
+            # ═══ PROCESS EDIT BUTTON ═══
+            st.markdown("")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🚀 Procesar Edición", key="process_edit_btn", use_container_width=True, type="primary"):
+                    if prev_doc and edit_prompt:
+                        st.session_state.start_edit_process = True
+                        st.session_state.edit_mode_selected = edit_mode
+                    else:
+                        st.warning("⚠️ Suba un documento y describa los cambios")
+            with col2:
+                if st.button("🗑️ Limpiar", key="clear_edit_btn", use_container_width=True):
+                    for key in ["previous_document", "edit_instructions_text", "selected_edit_pages"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+            
+            # ═══ MULTI-FILE UPLOAD ═══
+            st.markdown("---")
+            st.markdown("**📁 Archivos Adicionales (Opcional)**")
+            additional_files = st.file_uploader(
+                "Subir archivos de apoyo",
+                type=["pdf", "docx", "xlsx", "txt", "csv"],
+                accept_multiple_files=True,
+                key="additional_files_upload",
+                help="Suba POAI, presupuestos, tablas de datos que el agente debe usar"
+            )
+            if additional_files:
+                st.success(f"✓ {len(additional_files)} archivo(s) adicionales cargados")
+                for f in additional_files:
+                    st.caption(f"  • {f.name} ({f.size/1024:.1f} KB)")
+                st.session_state.additional_edit_files = additional_files
+            
+            # ═══ QUICK ACTIONS ═══
+            st.markdown("---")
+            st.markdown("**⚡ Acciones Rápidas**")
+            quick_col1, quick_col2 = st.columns(2)
+            with quick_col1:
+                if st.button("📊 Actualizar Presupuesto", key="quick_budget", use_container_width=True):
+                    st.session_state.edit_instructions_text = "Actualizar todas las tablas de presupuesto con los nuevos valores del POAI. Mantener la estructura pero actualizar montos."
+                    st.rerun()
+            with quick_col2:
+                if st.button("📅 Actualizar Fechas", key="quick_dates", use_container_width=True):
+                    st.session_state.edit_instructions_text = "Actualizar todas las fechas del documento al año actual (2026). Cambiar cronogramas y vigencias correspondientes."
+                    st.rerun()
         
         # ══════════════════════════════════════
         # MODEL SELECTION

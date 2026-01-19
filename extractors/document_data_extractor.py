@@ -265,8 +265,18 @@ class DocumentDataExtractor:
         
         fields_str = ", ".join(all_fields)
         
-        # Use less text to avoid timeout (reduced from 12000)
-        text_to_analyze = text[:6000] if len(text) > 6000 else text
+        # Use MORE text for better extraction (increased from 6000 to 15000)
+        # Also sample from different parts of the document to get data from all pages
+        text_length = len(text)
+        if text_length > 15000:
+            # Smart sampling: take from beginning, middle, and end
+            beginning = text[:6000]
+            middle_start = max(0, (text_length // 2) - 3000)
+            middle = text[middle_start:middle_start + 6000]
+            end = text[-3000:]
+            text_to_analyze = f"{beginning}\n\n[...SECCIÓN INTERMEDIA...]\n\n{middle}\n\n[...SECCIÓN FINAL...]\n\n{end}"
+        else:
+            text_to_analyze = text
         
         # Build context section if provided
         context_section = ""
