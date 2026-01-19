@@ -26,10 +26,18 @@ Este documento sigue el formato oficial del DNP para registro de proyectos de in
 10. Cadena de Valor (próximas páginas)
 ... (más secciones)
 
-**REGLAS:**
+**⚠️ REGLAS CRÍTICAS DE PRECISIÓN DE DATOS:**
+• NUNCA inventes datos, valores, números, nombres o fechas
+• Si un dato NO está disponible en el contexto, usa "N/A" o "Por definir"
+• USA ÚNICAMENTE los datos proporcionados en DATOS DEL PROYECTO y CONTEXTO ADICIONAL
+• Para valores numéricos faltantes, usa "0" o "N/A" 
+• Para textos faltantes, usa "N/A" o "Información no disponible"
+• El municipio, departamento, valor y responsable DEBEN ser los proporcionados
+• NO uses valores de ejemplo como "30.104" o "Juan Pérez" si no están en el contexto
+
+**REGLAS GENERALES:**
 • Responde SOLO en JSON válido
 • Usa lenguaje técnico y formal
-• Incluye datos numéricos realistas
 • Mantén consistencia con el formato MGA
 """
 
