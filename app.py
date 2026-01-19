@@ -105,17 +105,60 @@ st.markdown("""
         font-weight: 600;
         color: #333;
         margin-bottom: 0.5rem;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Session State Initialization ---
-if 'generated_content' not in st.session_state:
-    st.session_state.generated_content = None
-if 'generated_file' not in st.session_state:
-    st.session_state.generated_file = None
-if 'extracted_data' not in st.session_state:
-    st.session_state.extracted_data = {}
+# --- Session State Initialization (Comprehensive) ---
+def init_session_state():
+    """Initialize all required session state variables safely"""
+    defaults = {
+        # Core generation state
+        'generated_content': None,
+        'generated_file': None,
+        'extracted_data': {},
+        
+        # Edit mode state
+        'previous_document': None,
+        'edit_instructions_text': "",
+        'selected_edit_pages': [],
+        'additional_edit_files': [],
+        'start_edit_process': False,
+        'edit_mode_selected': None,
+        
+        # Generation history (new feature)
+        'generation_history': [],
+        'last_generation_time': None,
+        
+        # Error tracking
+        'last_error': None,
+        'error_count': 0,
+        
+        # User preferences
+        'preferred_model': 'groq',
+        'auto_download': False,
+        
+        # App version for debugging
+        'app_version': '2.1.0'
+    }
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
+# Initialize on app load
+init_session_state()
+
+# --- API Status Check ---
+def check_api_status():
+    """Check which APIs are configured and working"""
+    status = {}
+    for provider_id, config in LLM_PROVIDERS.items():
+        api_key = get_secret(config["env_key"])
+        status[provider_id] = {
+            "configured": bool(api_key),
+            "key_preview": f"{api_key[:8]}..." if api_key and len(api_key) > 8 else "Not set"
+        }
+    return status
 
 
 def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
@@ -1238,6 +1281,15 @@ def main():
                     st.session_state.generated_content = content
                     st.session_state.generated_file = filepath
                     
+                    # Track in generation history
+                    from datetime import datetime
+                    st.session_state.generation_history.append({
+                        "type": doc_type,
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "file": os.path.basename(filepath) if filepath else "N/A"
+                    })
+                    st.session_state.last_generation_time = datetime.now()
+                    
                     st.success("✅ Documento generado exitosamente!")
                     
                     # Download button
@@ -1259,6 +1311,54 @@ def main():
         st.session_state.generated_content = None
         st.session_state.generated_file = None
         st.rerun()
+    
+    # ═══════════════════════════════════════════════════════════
+    # FOOTER - Help, Diagnostics, History
+    # ═══════════════════════════════════════════════════════════
+    st.markdown("---")
+    
+    footer_col1, footer_col2, footer_col3 = st.columns(3)
+    
+    with footer_col1:
+        with st.expander("❓ Ayuda Rápida"):
+            st.markdown("""
+            **Modos de Uso:**
+            - 🆕 **Nuevo**: Crear documento desde cero
+            - 🔄 **Actualizar**: Editar documento existente
+            
+            **Tipos de Documento:**
+            - 📋 Estudios Previos
+            - 📊 Análisis del Sector
+            - 📄 DTS
+            - ✅ Certificaciones
+            - 📑 MGA Subsidios
+            - 🔥 Modo Unificado (todos)
+            
+            **Tips:**
+            - Use "Modo Unificado" para generar todos
+            - Suba archivos de apoyo para mejor precisión
+            - Revise siempre el documento generado
+            """)
+    
+    with footer_col2:
+        with st.expander("📊 Historial de Generación"):
+            if st.session_state.generation_history:
+                for item in st.session_state.generation_history[-5:]:  # Last 5
+                    st.caption(f"⏰ {item['time']} - {item['type']}: {item['file']}")
+            else:
+                st.caption("No hay generaciones recientes")
+    
+    with footer_col3:
+        with st.expander("🔧 Diagnóstico"):
+            api_status = check_api_status()
+            for provider, status in api_status.items():
+                if status["configured"]:
+                    st.caption(f"✅ {provider}: {status['key_preview']}")
+                else:
+                    st.caption(f"❌ {provider}: No configurado")
+            st.caption(f"📱 Versión: {st.session_state.app_version}")
+            if st.session_state.last_error:
+                st.caption(f"⚠️ Último error: {st.session_state.last_error}")
 
 
 if __name__ == "__main__":
