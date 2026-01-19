@@ -21,7 +21,7 @@ load_dotenv()
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import get_llm, get_available_providers, LLM_PROVIDERS, APP_TITLE, APP_DESCRIPTION
+from config import get_llm, get_available_providers, LLM_PROVIDERS, APP_TITLE, APP_DESCRIPTION, get_secret
 from generators.estudios_previos_generator import EstudiosPreviosGenerator
 from generators.analisis_sector_generator import AnalisisSectorGenerator
 from generators.dts_generator import DTSGenerator
