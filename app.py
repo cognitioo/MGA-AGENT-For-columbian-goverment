@@ -127,37 +127,127 @@ def increment_generation_count():
 def validate_form_data(data: dict, doc_type: str) -> list:
     """
     Validate form data before submission - checks presence AND quality.
+    Uses full MGA Subsidios 24-page structure knowledge.
     Returns list of tuples: (field_name, severity, message)
-    Severity: 'critical', 'warning', 'info'
     """
     issues = []
     
-    # Define required fields by document type with validation rules
-    mga_structure = {
-        "critical": {
-            "municipio": {"min_len": 3, "desc": "Nombre del municipio"},
-            "departamento": {"min_len": 3, "desc": "Nombre del departamento"},
-            "nombre_proyecto": {"min_len": 20, "desc": "Nombre completo del proyecto"},
-            "valor_total": {"min_len": 1, "desc": "Valor total en pesos", "numeric": True}
+    # ═══════════════════════════════════════════════════════════════
+    # MGA SUBSIDIOS COMPLETE STRUCTURE (24 PAGES)
+    # Based on mga_subsidios_builder.py structure
+    # ═══════════════════════════════════════════════════════════════
+    
+    MGA_SUBSIDIOS_STRUCTURE = {
+        # PAGE 1: Datos Básicos
+        "pagina_1_datos_basicos": {
+            "fields": {
+                "municipio": {"required": True, "min_len": 3, "desc": "Nombre del municipio"},
+                "departamento": {"required": True, "min_len": 3, "desc": "Nombre del departamento"},
+                "nombre_proyecto": {"required": True, "min_len": 20, "desc": "Nombre completo del proyecto"},
+                "bpin": {"required": True, "min_len": 8, "desc": "Código BPIN del proyecto"},
+                "valor_total": {"required": True, "numeric": True, "desc": "Valor total en pesos COP"},
+                "duracion": {"required": True, "numeric": True, "desc": "Duración en días"},
+                "entidad": {"required": True, "min_len": 5, "desc": "Entidad ejecutora"},
+                "responsable": {"required": True, "min_len": 5, "desc": "Nombre del responsable"},
+                "cargo": {"required": False, "min_len": 3, "desc": "Cargo del responsable"}
+            }
         },
-        "warning": {
-            "bpin": {"min_len": 8, "desc": "Código BPIN (mínimo 8 dígitos)"},
-            "responsable": {"min_len": 5, "desc": "Nombre del responsable"},
-            "duracion": {"min_len": 1, "desc": "Duración en días", "numeric": True},
-            "entidad": {"min_len": 5, "desc": "Nombre de la entidad"},
-            "objeto": {"min_len": 30, "desc": "Objeto del proyecto (mínimo 30 caracteres)"},
-            "necesidad": {"min_len": 20, "desc": "Descripción de la necesidad"}
+        # PAGE 2: Plan de Desarrollo
+        "pagina_2_plan_desarrollo": {
+            "fields": {
+                "plan_nacional": {"required": True, "min_len": 10, "desc": "Plan Nacional de Desarrollo"},
+                "plan_departamental": {"required": True, "min_len": 10, "desc": "Plan Departamental de Desarrollo"},
+                "plan_municipal": {"required": True, "min_len": 10, "desc": "Plan Municipal de Desarrollo"}
+            }
         },
-        "info": {
-            "plan_nacional": {"min_len": 5, "desc": "Plan Nacional de Desarrollo"},
-            "plan_departamental": {"min_len": 5, "desc": "Plan Departamental"},
-            "plan_municipal": {"min_len": 5, "desc": "Plan Municipal"},
-            "sector": {"min_len": 3, "desc": "Sector del proyecto"}
+        # PAGE 3: Problemática
+        "pagina_3_problematica": {
+            "fields": {
+                "problema_central": {"required": True, "min_len": 30, "desc": "Descripción del problema central"},
+                "descripcion_situacion": {"required": True, "min_len": 50, "desc": "Descripción de la situación existente"},
+                "magnitud_problema": {"required": False, "min_len": 20, "desc": "Magnitud del problema - indicadores"}
+            }
+        },
+        # PAGE 4: Causas y Efectos
+        "pagina_4_causas_efectos": {
+            "fields": {
+                "causas_directas": {"required": True, "is_list": True, "desc": "Lista de causas directas"},
+                "causas_indirectas": {"required": False, "is_list": True, "desc": "Lista de causas indirectas"},
+                "efectos_directos": {"required": True, "is_list": True, "desc": "Lista de efectos directos"},
+                "efectos_indirectos": {"required": False, "is_list": True, "desc": "Lista de efectos indirectos"}
+            }
+        },
+        # PAGE 5: Participantes
+        "pagina_5_participantes": {
+            "fields": {
+                "participantes": {"required": True, "is_list": True, "desc": "Lista de actores/participantes"}
+            }
+        },
+        # PAGE 6: Población
+        "pagina_6_poblacion": {
+            "fields": {
+                "poblacion_afectada": {"required": True, "min_len": 5, "desc": "Población afectada"},
+                "poblacion_objetivo": {"required": True, "min_len": 5, "desc": "Población objetivo"}
+            }
+        },
+        # PAGE 7: Objetivos
+        "pagina_7_objetivos": {
+            "fields": {
+                "objetivo_general": {"required": True, "min_len": 30, "desc": "Objetivo general del proyecto"},
+                "objetivos_especificos": {"required": True, "is_list": True, "desc": "Lista de objetivos específicos"}
+            }
+        },
+        # PAGE 12: Análisis Técnico
+        "pagina_12_analisis": {
+            "fields": {
+                "descripcion_alternativa": {"required": True, "min_len": 30, "desc": "Descripción de la alternativa"}
+            }
+        },
+        # PAGE 13: Localización
+        "pagina_13_localizacion": {
+            "fields": {
+                "region": {"required": False, "min_len": 3, "desc": "Región"},
+                "latitud": {"required": False, "desc": "Coordenada latitud"},
+                "longitud": {"required": False, "desc": "Coordenada longitud"}
+            }
+        },
+        # PAGE 14: Cadena de Valor
+        "pagina_14_cadena_valor": {
+            "fields": {
+                "indicador_producto": {"required": True, "min_len": 10, "desc": "Indicador de producto"},
+                "meta_producto": {"required": True, "desc": "Meta del producto"}
+            }
         }
     }
     
-    # Use MGA structure for all types (most comprehensive)
-    structure = mga_structure
+    # Flatten for form field validation
+    critical_fields = {
+        "municipio": {"min_len": 3, "desc": "Municipio"},
+        "departamento": {"min_len": 3, "desc": "Departamento"},
+        "nombre_proyecto": {"min_len": 20, "desc": "Nombre del proyecto (min. 20 caracteres)"},
+        "valor_total": {"min_len": 1, "desc": "Valor total", "numeric": True},
+        "bpin": {"min_len": 8, "desc": "Código BPIN (min. 8 dígitos)"}
+    }
+    
+    warning_fields = {
+        "responsable": {"min_len": 5, "desc": "Nombre del responsable"},
+        "duracion": {"min_len": 1, "desc": "Duración en días", "numeric": True},
+        "entidad": {"min_len": 5, "desc": "Entidad ejecutora"},
+        "objeto": {"min_len": 30, "desc": "Objeto del contrato (min. 30 caracteres)"},
+        "necesidad": {"min_len": 20, "desc": "Descripción de la necesidad"},
+        "plan_nacional": {"min_len": 10, "desc": "Plan Nacional de Desarrollo"},
+        "plan_departamental": {"min_len": 10, "desc": "Plan Departamental"},
+        "plan_municipal": {"min_len": 10, "desc": "Plan Municipal"}
+    }
+    
+    info_fields = {
+        "sector": {"min_len": 3, "desc": "Sector del proyecto"},
+        "programa": {"min_len": 5, "desc": "Programa"},
+        "subprograma": {"min_len": 5, "desc": "Subprograma"},
+        "poblacion_beneficiada": {"min_len": 5, "desc": "Población beneficiada"},
+        "indicador_producto": {"min_len": 10, "desc": "Indicador de producto"},
+        "meta_producto": {"min_len": 1, "desc": "Meta del producto"}
+    }
     
     def check_field(field_name, rules, severity):
         value = data.get(field_name, "")
@@ -165,35 +255,36 @@ def validate_form_data(data: dict, doc_type: str) -> list:
         
         # Check if empty
         if not value or value == "" or value == "N/A" or value == "Por definir":
-            issues.append((field_name, severity, f"⛔ '{rules['desc']}' está vacío"))
+            issues.append((field_name, severity, f"⛔ '{rules['desc']}' está vacío o no definido"))
             return
         
         # Check minimum length
-        if len(value_str) < rules.get("min_len", 1):
-            issues.append((field_name, severity, f"⚠️ '{rules['desc']}' muy corto ({len(value_str)} chars, mínimo {rules['min_len']})"))
+        min_len = rules.get("min_len", 1)
+        if len(value_str) < min_len:
+            issues.append((field_name, "warning", f"⚠️ '{rules['desc']}' muy corto ({len(value_str)}/{min_len} caracteres)"))
         
-        # Check if numeric field contains valid number
+        # Check if numeric field
         if rules.get("numeric"):
-            clean_value = value_str.replace(".", "").replace(",", "").replace("$", "").replace(" ", "")
-            if not clean_value.isdigit():
-                issues.append((field_name, severity, f"⚠️ '{rules['desc']}' debe ser numérico"))
+            clean = value_str.replace(".", "").replace(",", "").replace("$", "").replace(" ", "")
+            if not clean.isdigit():
+                issues.append((field_name, "warning", f"⚠️ '{rules['desc']}' debe ser numérico"))
         
-        # Check for placeholder/fake data patterns
-        fake_patterns = ["ejemplo", "xxx", "123456789", "test", "prueba", "sample", "lorem"]
+        # Detect placeholder/fake data
+        fake_patterns = ["ejemplo", "xxx", "test", "prueba", "sample", "lorem", "placeholder"]
         for pattern in fake_patterns:
             if pattern.lower() in value_str.lower():
-                issues.append((field_name, "warning", f"⚠️ '{field_name}' parece contener datos de ejemplo"))
+                issues.append((field_name, "critical", f"⛔ '{field_name}' contiene datos de ejemplo/prueba - PROHIBIDO"))
                 break
     
-    # Check all severity levels
-    for field_name, rules in structure.get("critical", {}).items():
-        check_field(field_name, rules, "critical")
+    # Check all fields
+    for field, rules in critical_fields.items():
+        check_field(field, rules, "critical")
     
-    for field_name, rules in structure.get("warning", {}).items():
-        check_field(field_name, rules, "warning")
+    for field, rules in warning_fields.items():
+        check_field(field, rules, "warning")
     
-    for field_name, rules in structure.get("info", {}).items():
-        check_field(field_name, rules, "info")
+    for field, rules in info_fields.items():
+        check_field(field, rules, "info")
     
     return issues
 
