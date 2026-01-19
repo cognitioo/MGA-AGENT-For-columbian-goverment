@@ -249,7 +249,7 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
             # Show unused data (won't auto-fill but user can copy)
             if unused_data:
                 st.markdown("### 📦 Datos Adicionales Extraídos (No Auto-llenados)")
-                st.warning("⚠️ Estos datos fueron extraídos pero NO se usan automáticamente. ¡Cópielos manualmente!")
+                st.warning("⚠️ Estos datos no se utilizan en todos los campos del formulario. Revísalos y, si encuentras algún dato útil, complétalo manualmente.")
                 unused_json = json.dumps(unused_data, indent=2, ensure_ascii=False)
                 st.text_area(
                     "Datos Adicionales",
