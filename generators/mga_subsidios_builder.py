@@ -31,6 +31,19 @@ class MGASubsidiosBuilder:
             return value
         return default
     
+    def _safe_str(self, value, default: str = "") -> str:
+        """Safely convert value to string (handles dict, list, None)"""
+        import json
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return json.dumps(value, ensure_ascii=False)
+        if isinstance(value, list):
+            return ", ".join(str(v) for v in value)
+        return str(value)
+    
     def build(self, data: dict, ai_content: dict, letterhead_file=None) -> str:
         """Build the MGA Subsidios document"""
         self._has_letterhead = letterhead_file is not None
@@ -261,17 +274,17 @@ class MGASubsidiosBuilder:
         
         self._add_subsection_title("Problema central")
         p = self.doc.add_paragraph()
-        p.add_run(content.get("problema_central", ""))
+        p.add_run(self._safe_str(content.get("problema_central", "")))
         
         self._add_subsection_title("Descripción de la situación existente con respecto al problema")
-        desc = content.get("descripcion_situacion", "").replace("\\n", "\n")
+        desc = self._safe_str(content.get("descripcion_situacion", "")).replace("\\n", "\n")
         for para in desc.split("\n\n"):
             p = self.doc.add_paragraph()
             p.add_run(para)
             p.paragraph_format.space_after = Pt(6)
         
         self._add_subsection_title("Magnitud actual del problema – indicadores de referencia")
-        mag = content.get("magnitud_problema", "").replace("\\n", "\n")
+        mag = self._safe_str(content.get("magnitud_problema", "")).replace("\\n", "\n")
         for para in mag.split("\n\n"):
             p = self.doc.add_paragraph()
             p.add_run(para)
@@ -374,7 +387,7 @@ class MGASubsidiosBuilder:
         
         # Análisis
         self._add_subsection_title("02 - Análisis de los participantes")
-        analisis = content.get("analisis_participantes", "").replace("\\n", "\n")
+        analisis = self._safe_str(content.get("analisis_participantes", "")).replace("\\n", "\n")
         for para in analisis.split("\n\n"):
             p = self.doc.add_paragraph()
             p.add_run(para)
