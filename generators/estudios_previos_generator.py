@@ -131,7 +131,7 @@ class EstudiosPreviosGenerator:
             "lugar": data.get("lugar", ""),
             "responsable": data.get("responsable", ""),
             "cargo": data.get("cargo", "Secretario de Planeación Municipal"),
-            "context_dump": data.get("context_dump", "No disponible")
+            "context_dump": (data.get("context_dump", "No disponible") or "")[:3000]  # Truncate to avoid token limit
         })
         
         # Parse JSON from response

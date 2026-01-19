@@ -92,7 +92,7 @@ class MGASubsidiosGenerator:
             "plan_nacional": data.get("plan_nacional", "(2022-2026) Colombia Potencia Mundial de la Vida"),
             "plan_departamental": data.get("plan_departamental", "Bolívar Me Enamora 2024-2027"),
             "plan_municipal": data.get("plan_municipal", "San Pablo Mejor 2024-2027"),
-            "context_dump": data.get("context_dump", "No disponible")
+            "context_dump": (data.get("context_dump", "No disponible") or "")[:3000]  # Truncate to avoid token limit
         }
         
         # Generate pages 1-5
