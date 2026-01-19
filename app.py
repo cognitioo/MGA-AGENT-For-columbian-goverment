@@ -225,14 +225,50 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
             st.markdown("### 📋 Datos Extraídos por IA (JSON Editable)")
             st.info("Puede copiar valores de aquí o editar el JSON y volver a cargar.")
             
-            # Show as editable text area
-            json_str = json.dumps({k: v for k, v in raw_data.items() if k != "context_dump"}, indent=2, ensure_ascii=False)
+            # Define known form fields that get auto-filled
+            known_form_fields = {
+                "municipio", "departamento", "entidad", "bpin", "nombre_proyecto",
+                "valor_total", "duracion", "responsable", "cargo", "alcalde",
+                "objeto", "necesidad", "modalidad", "fuente_financiacion",
+                "sector", "poblacion_beneficiada"
+            }
+            
+            # Separate used and unused data
+            used_data = {k: v for k, v in raw_data.items() if k in known_form_fields and k != "context_dump"}
+            unused_data = {k: v for k, v in raw_data.items() if k not in known_form_fields and k not in ["context_dump", "user_context"]}
+            
+            # Show used data (goes to form)
+            json_str = json.dumps(used_data, indent=2, ensure_ascii=False)
             edited_json = st.text_area(
-                "JSON de Datos Extraídos",
+                "JSON de Datos Extraídos (Auto-llenado)",
                 value=json_str,
-                height=300,
+                height=200,
                 key=f"{key_prefix}_json_edit"
             )
+            
+            # Show unused data (won't auto-fill but user can copy)
+            if unused_data:
+                st.markdown("### 📦 Datos Adicionales Extraídos (No Auto-llenados)")
+                st.warning("⚠️ Estos datos fueron extraídos pero NO se usan automáticamente. ¡Cópielos manualmente!")
+                unused_json = json.dumps(unused_data, indent=2, ensure_ascii=False)
+                st.text_area(
+                    "Datos Adicionales",
+                    value=unused_json,
+                    height=150,
+                    key=f"{key_prefix}_unused_json",
+                    disabled=False
+                )
+            
+            # Show raw context dump for reference
+            if raw_data.get("context_dump"):
+                with st.expander("📄 Texto Completo Extraído del Documento"):
+                    st.text_area(
+                        "Contenido del documento",
+                        value=raw_data["context_dump"][:5000] + ("..." if len(raw_data.get("context_dump", "")) > 5000 else ""),
+                        height=200,
+                        key=f"{key_prefix}_context_dump_display",
+                        disabled=True
+                    )
             
             # Button to apply edited JSON
             if st.button("🔄 Aplicar JSON Editado", key=f"{key_prefix}_apply_json"):
