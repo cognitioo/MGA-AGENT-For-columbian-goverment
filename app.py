@@ -259,26 +259,70 @@ def render_sidebar():
             st.caption("📄 Documento base (opcional):")
             prev_doc = st.file_uploader(
                 "Subir MGA anterior",
-                type=["pdf", "docx"],
-                help="Suba el MGA o documento del año anterior para extraer datos base",
+                type=["pdf", "docx", "xlsx"],
+                help="Suba el MGA o documento a editar",
                 key="prev_doc_upload",
                 label_visibility="collapsed"
             )
             if prev_doc:
                 st.success(f"✓ {prev_doc.name}")
                 st.session_state.previous_document = prev_doc
+                
+                # Extract pages from uploaded document for preview
+                from extractors.document_data_extractor import DocumentDataExtractor
+                extractor = DocumentDataExtractor()
+                file_ext = prev_doc.name.split('.')[-1].lower()
+                
+                # Show page count info
+                if file_ext == 'pdf':
+                    try:
+                        import fitz
+                        prev_doc.seek(0)
+                        doc = fitz.open(stream=prev_doc.read(), filetype="pdf")
+                        page_count = doc.page_count
+                        st.info(f"📄 Documento tiene {page_count} páginas")
+                        prev_doc.seek(0)
+                    except:
+                        page_count = 0
+                else:
+                    page_count = 0
+            
+            # Edit mode selection
+            st.caption("🔧 Tipo de Edición")
+            edit_mode = st.radio(
+                "Modo de edición",
+                ["Edición Específica (páginas)", "Edición Completa (todo el documento)"],
+                key="edit_mode_radio",
+                label_visibility="collapsed",
+                help="Elija si quiere editar páginas específicas o todo el documento"
+            )
+            
+            if "páginas" in edit_mode and prev_doc and page_count > 0:
+                # Page selection for specific editing
+                st.caption("📑 Seleccione páginas a editar")
+                selected_pages = st.multiselect(
+                    "Páginas",
+                    options=list(range(1, page_count + 1)),
+                    default=[1],
+                    key="selected_pages_edit",
+                    label_visibility="collapsed",
+                    help="Seleccione las páginas que desea modificar"
+                )
+                st.session_state.selected_edit_pages = selected_pages
             
             # Edit instructions - what to change
             st.caption("✏️ ¿Qué desea modificar?")
-            edit_instructions = st.text_area(
+            edit_prompt = st.text_area(
                 "Instrucciones de edición",
                 placeholder="Describa los cambios a realizar:\n• Actualizar valores del POAI 2025\n• Cambiar fechas a enero 2026\n• Modificar el responsable\n• Actualizar tabla de presupuesto",
                 height=100,
-                help="Indique al agente qué datos actualizar o modificar del documento anterior",
-                key="edit_instructions",
+                help="Indique al agente qué datos actualizar o modificar del documento",
+                key="edit_prompt_input",
                 label_visibility="collapsed"
             )
-            st.session_state.edit_instructions = edit_instructions
+            # Store in separate key to avoid widget key conflict
+            if edit_prompt:
+                st.session_state.edit_instructions_text = edit_prompt
         
         st.markdown("---")
         
