@@ -32,7 +32,102 @@ from extractors.document_data_extractor import extract_data_from_upload
 from generators.unified_generator import UnifiedGenerator
 
 
-# --- Page Configuration ---
+# ═══════════════════════════════════════════════════════════════
+# AUTHENTICATION SYSTEM
+# ═══════════════════════════════════════════════════════════════
+
+# Credentials (can be overridden via st.secrets)
+ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "MGA_Admin_2026!")
+USER_PASSWORD = get_secret("USER_PASSWORD", "MGA_User_2026")
+
+# Rate limiting settings
+USER_DAILY_LIMIT = int(get_secret("USER_DAILY_LIMIT", "10"))  # Max generations per day for normal users
+ADMIN_DAILY_LIMIT = 999999  # Unlimited for admins
+
+def check_authentication():
+    """Check if user is authenticated and return their role"""
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.user_role = None
+        st.session_state.generation_count_today = 0
+        st.session_state.last_generation_date = None
+    
+    return st.session_state.authenticated, st.session_state.user_role
+
+def login_page():
+    """Render the login page"""
+    st.set_page_config(page_title="MGA AI Agent - Login", page_icon="🔐", layout="centered")
+    
+    st.markdown("""
+    <style>
+        .login-container { max-width: 400px; margin: 0 auto; padding: 2rem; }
+        .login-title { text-align: center; font-size: 2rem; margin-bottom: 1rem; }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("# 🔐 MGA AI Agent")
+    st.markdown("### Iniciar Sesión")
+    st.markdown("---")
+    
+    password = st.text_input("Contraseña", type="password", key="login_password")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔑 Entrar como Admin", use_container_width=True):
+            if password == ADMIN_PASSWORD:
+                st.session_state.authenticated = True
+                st.session_state.user_role = "admin"
+                st.session_state.generation_count_today = 0
+                st.success("✅ Bienvenido, Administrador!")
+                st.rerun()
+            else:
+                st.error("❌ Contraseña incorrecta")
+    
+    with col2:
+        if st.button("👤 Entrar como Usuario", use_container_width=True):
+            if password == USER_PASSWORD:
+                st.session_state.authenticated = True
+                st.session_state.user_role = "user"
+                st.session_state.generation_count_today = 0
+                st.success("✅ Bienvenido, Usuario!")
+                st.rerun()
+            else:
+                st.error("❌ Contraseña incorrecta")
+    
+    st.markdown("---")
+    st.caption("Contacte al administrador si no tiene acceso.")
+
+def check_rate_limit():
+    """Check if user has exceeded their daily generation limit"""
+    from datetime import date
+    
+    today = date.today().isoformat()
+    
+    # Reset count if it's a new day
+    if st.session_state.get('last_generation_date') != today:
+        st.session_state.generation_count_today = 0
+        st.session_state.last_generation_date = today
+    
+    # Get limit based on role
+    if st.session_state.user_role == "admin":
+        limit = ADMIN_DAILY_LIMIT
+    else:
+        limit = USER_DAILY_LIMIT
+    
+    return st.session_state.generation_count_today < limit, limit
+
+def increment_generation_count():
+    """Increment the generation counter"""
+    st.session_state.generation_count_today = st.session_state.get('generation_count_today', 0) + 1
+
+# Check authentication BEFORE setting page config
+is_authenticated, user_role = check_authentication()
+
+if not is_authenticated:
+    login_page()
+    st.stop()
+
+# --- Page Configuration (only after authentication) ---
 st.set_page_config(
     page_title=APP_TITLE,
     page_icon="📋",
@@ -317,6 +412,26 @@ def render_sidebar():
         # Logo/Title
         st.markdown("### 🛠️ MGA Agent")
         st.caption("Generador de Documentos")
+        
+        # User info and logout
+        user_role = st.session_state.get('user_role', 'user')
+        role_emoji = "👑" if user_role == "admin" else "👤"
+        st.markdown(f"**{role_emoji} Rol: {user_role.title()}**")
+        
+        # Show rate limit for users
+        can_generate, limit = check_rate_limit()
+        used = st.session_state.get('generation_count_today', 0)
+        if user_role != "admin":
+            st.caption(f"📊 Usos hoy: {used}/{limit}")
+            if not can_generate:
+                st.error("⚠️ Límite diario alcanzado")
+        
+        # Logout button
+        if st.button("🚪 Cerrar Sesión", key="logout_btn", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.user_role = None
+            st.rerun()
+        
         st.markdown("---")
         
         # ══════════════════════════════════════
