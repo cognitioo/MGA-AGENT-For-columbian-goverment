@@ -120,6 +120,111 @@ def increment_generation_count():
     """Increment the generation counter"""
     st.session_state.generation_count_today = st.session_state.get('generation_count_today', 0) + 1
 
+# ═══════════════════════════════════════════════════════════════
+# PRE-SUBMIT VALIDATION AI
+# ═══════════════════════════════════════════════════════════════
+
+def validate_form_data(data: dict, doc_type: str) -> list:
+    """
+    Validate form data before submission and return list of missing/problematic fields.
+    Returns list of tuples: (field_name, severity, message)
+    Severity: 'critical', 'warning', 'info'
+    """
+    issues = []
+    
+    # Define required fields by document type
+    required_fields = {
+        "mga_subsidios": {
+            "critical": ["municipio", "departamento", "nombre_proyecto", "valor_total"],
+            "warning": ["bpin", "responsable", "duracion", "entidad"],
+            "info": ["plan_nacional", "plan_departamental", "plan_municipal"]
+        },
+        "estudios_previos": {
+            "critical": ["municipio", "objeto", "valor_total"],
+            "warning": ["necesidad", "alcance", "modalidad"],
+            "info": ["fuente_financiacion", "duracion"]
+        },
+        "analisis_sector": {
+            "critical": ["municipio", "sector"],
+            "warning": ["codigos_unspsc", "codigo_ciiu"],
+            "info": ["nombre_proyecto"]
+        },
+        "dts": {
+            "critical": ["municipio", "nombre_proyecto"],
+            "warning": ["programa", "subprograma"],
+            "info": ["poblacion_beneficiada"]
+        },
+        "certificaciones": {
+            "critical": ["municipio", "nombre_proyecto"],
+            "warning": ["alcalde", "responsable"],
+            "info": []
+        },
+        "unified": {
+            "critical": ["municipio", "departamento", "nombre_proyecto", "valor_total"],
+            "warning": ["bpin", "responsable", "duracion", "objeto", "necesidad"],
+            "info": ["plan_nacional", "plan_departamental", "plan_municipal", "sector"]
+        }
+    }
+    
+    fields = required_fields.get(doc_type, required_fields["unified"])
+    
+    # Check critical fields
+    for field in fields.get("critical", []):
+        value = data.get(field, "")
+        if not value or value == "" or value == "N/A":
+            issues.append((field, "critical", f"⛔ Campo obligatorio '{field}' está vacío"))
+    
+    # Check warning fields
+    for field in fields.get("warning", []):
+        value = data.get(field, "")
+        if not value or value == "" or value == "N/A":
+            issues.append((field, "warning", f"⚠️ Campo recomendado '{field}' está vacío"))
+    
+    # Check info fields
+    for field in fields.get("info", []):
+        value = data.get(field, "")
+        if not value or value == "" or value == "N/A":
+            issues.append((field, "info", f"ℹ️ Campo opcional '{field}' está vacío"))
+    
+    return issues
+
+def render_validation_panel(issues: list, doc_type: str) -> bool:
+    """
+    Render validation panel with issues and skip option.
+    Returns True if user wants to proceed, False if they want to fix.
+    """
+    if not issues:
+        return True
+    
+    critical_count = len([i for i in issues if i[1] == "critical"])
+    warning_count = len([i for i in issues if i[1] == "warning"])
+    
+    with st.expander(f"🔍 Validación Pre-Generación ({len(issues)} observaciones)", expanded=True):
+        if critical_count > 0:
+            st.error(f"⛔ {critical_count} campo(s) crítico(s) faltante(s)")
+        if warning_count > 0:
+            st.warning(f"⚠️ {warning_count} campo(s) recomendado(s) faltante(s)")
+        
+        # Group by severity
+        for severity, emoji, color in [("critical", "⛔", "red"), ("warning", "⚠️", "orange"), ("info", "ℹ️", "blue")]:
+            severity_issues = [i for i in issues if i[1] == severity]
+            if severity_issues:
+                st.markdown(f"**{emoji} {'Críticos' if severity == 'critical' else 'Recomendados' if severity == 'warning' else 'Opcionales'}:**")
+                for field, _, message in severity_issues:
+                    st.caption(message)
+        
+        st.markdown("---")
+        st.caption("💡 Puede completar los campos faltantes o continuar con la generación.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("⏭️ Saltar Validación y Continuar", key=f"skip_validation_{doc_type}", use_container_width=True):
+                return True
+        with col2:
+            st.button("✏️ Volver a Editar", key=f"edit_form_{doc_type}", use_container_width=True, disabled=True)
+    
+    return False
+
 # Check authentication BEFORE setting page config
 is_authenticated, user_role = check_authentication()
 

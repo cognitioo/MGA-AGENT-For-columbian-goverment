@@ -706,12 +706,22 @@ class MGASubsidiosBuilder:
             for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
         
-        table.rows[1].cells[0].text = f"Región: {ubicacion.get('region', 'Caribe')}"
-        table.rows[2].cells[0].text = f"Departamento: {ubicacion.get('departamento', '')}"
-        table.rows[3].cells[0].text = f"Municipio: {ubicacion.get('municipio', '')}"
-        table.rows[4].cells[0].text = f"Tipo de Agrupación: {ubicacion.get('tipo_agrupacion', 'Urbana')}"
-        table.rows[5].cells[0].text = f"Latitud: {ubicacion.get('latitud', '4.123456')}"
-        table.rows[6].cells[0].text = f"Longitud: {ubicacion.get('longitud', '-73.987654')}"
+        # Fill general location (column 0)
+        table.rows[1].cells[0].text = f"Región: {self._safe_str(ubicacion.get('region', 'N/A'))}"
+        table.rows[2].cells[0].text = f"Departamento: {self._safe_str(ubicacion.get('departamento', 'N/A'))}"
+        table.rows[3].cells[0].text = f"Municipio: {self._safe_str(ubicacion.get('municipio', 'N/A'))}"
+        table.rows[4].cells[0].text = f"Tipo de Agrupación: {self._safe_str(ubicacion.get('tipo_agrupacion', 'Urbana'))}"
+        table.rows[5].cells[0].text = f"Latitud: {self._safe_str(ubicacion.get('latitud', 'N/A'))}"
+        table.rows[6].cells[0].text = f"Longitud: {self._safe_str(ubicacion.get('longitud', 'N/A'))}"
+        
+        # Fill specific location (column 1) - use N/A if not provided
+        ubicacion_especifica = ubicacion.get("ubicacion_especifica", {})
+        table.rows[1].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_region', 'N/A'))
+        table.rows[2].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_departamento', 'N/A'))
+        table.rows[3].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_municipio', 'N/A'))
+        table.rows[4].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_tipo', 'N/A'))
+        table.rows[5].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_latitud', 'N/A'))
+        table.rows[6].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_longitud', 'N/A'))
         
         self.doc.add_paragraph()
         
