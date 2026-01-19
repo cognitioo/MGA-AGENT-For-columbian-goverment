@@ -126,65 +126,74 @@ def increment_generation_count():
 
 def validate_form_data(data: dict, doc_type: str) -> list:
     """
-    Validate form data before submission and return list of missing/problematic fields.
+    Validate form data before submission - checks presence AND quality.
     Returns list of tuples: (field_name, severity, message)
     Severity: 'critical', 'warning', 'info'
     """
     issues = []
     
-    # Define required fields by document type
-    required_fields = {
-        "mga_subsidios": {
-            "critical": ["municipio", "departamento", "nombre_proyecto", "valor_total"],
-            "warning": ["bpin", "responsable", "duracion", "entidad"],
-            "info": ["plan_nacional", "plan_departamental", "plan_municipal"]
+    # Define required fields by document type with validation rules
+    mga_structure = {
+        "critical": {
+            "municipio": {"min_len": 3, "desc": "Nombre del municipio"},
+            "departamento": {"min_len": 3, "desc": "Nombre del departamento"},
+            "nombre_proyecto": {"min_len": 20, "desc": "Nombre completo del proyecto"},
+            "valor_total": {"min_len": 1, "desc": "Valor total en pesos", "numeric": True}
         },
-        "estudios_previos": {
-            "critical": ["municipio", "objeto", "valor_total"],
-            "warning": ["necesidad", "alcance", "modalidad"],
-            "info": ["fuente_financiacion", "duracion"]
+        "warning": {
+            "bpin": {"min_len": 8, "desc": "Código BPIN (mínimo 8 dígitos)"},
+            "responsable": {"min_len": 5, "desc": "Nombre del responsable"},
+            "duracion": {"min_len": 1, "desc": "Duración en días", "numeric": True},
+            "entidad": {"min_len": 5, "desc": "Nombre de la entidad"},
+            "objeto": {"min_len": 30, "desc": "Objeto del proyecto (mínimo 30 caracteres)"},
+            "necesidad": {"min_len": 20, "desc": "Descripción de la necesidad"}
         },
-        "analisis_sector": {
-            "critical": ["municipio", "sector"],
-            "warning": ["codigos_unspsc", "codigo_ciiu"],
-            "info": ["nombre_proyecto"]
-        },
-        "dts": {
-            "critical": ["municipio", "nombre_proyecto"],
-            "warning": ["programa", "subprograma"],
-            "info": ["poblacion_beneficiada"]
-        },
-        "certificaciones": {
-            "critical": ["municipio", "nombre_proyecto"],
-            "warning": ["alcalde", "responsable"],
-            "info": []
-        },
-        "unified": {
-            "critical": ["municipio", "departamento", "nombre_proyecto", "valor_total"],
-            "warning": ["bpin", "responsable", "duracion", "objeto", "necesidad"],
-            "info": ["plan_nacional", "plan_departamental", "plan_municipal", "sector"]
+        "info": {
+            "plan_nacional": {"min_len": 5, "desc": "Plan Nacional de Desarrollo"},
+            "plan_departamental": {"min_len": 5, "desc": "Plan Departamental"},
+            "plan_municipal": {"min_len": 5, "desc": "Plan Municipal"},
+            "sector": {"min_len": 3, "desc": "Sector del proyecto"}
         }
     }
     
-    fields = required_fields.get(doc_type, required_fields["unified"])
+    # Use MGA structure for all types (most comprehensive)
+    structure = mga_structure
     
-    # Check critical fields
-    for field in fields.get("critical", []):
-        value = data.get(field, "")
-        if not value or value == "" or value == "N/A":
-            issues.append((field, "critical", f"⛔ Campo obligatorio '{field}' está vacío"))
+    def check_field(field_name, rules, severity):
+        value = data.get(field_name, "")
+        value_str = str(value) if value else ""
+        
+        # Check if empty
+        if not value or value == "" or value == "N/A" or value == "Por definir":
+            issues.append((field_name, severity, f"⛔ '{rules['desc']}' está vacío"))
+            return
+        
+        # Check minimum length
+        if len(value_str) < rules.get("min_len", 1):
+            issues.append((field_name, severity, f"⚠️ '{rules['desc']}' muy corto ({len(value_str)} chars, mínimo {rules['min_len']})"))
+        
+        # Check if numeric field contains valid number
+        if rules.get("numeric"):
+            clean_value = value_str.replace(".", "").replace(",", "").replace("$", "").replace(" ", "")
+            if not clean_value.isdigit():
+                issues.append((field_name, severity, f"⚠️ '{rules['desc']}' debe ser numérico"))
+        
+        # Check for placeholder/fake data patterns
+        fake_patterns = ["ejemplo", "xxx", "123456789", "test", "prueba", "sample", "lorem"]
+        for pattern in fake_patterns:
+            if pattern.lower() in value_str.lower():
+                issues.append((field_name, "warning", f"⚠️ '{field_name}' parece contener datos de ejemplo"))
+                break
     
-    # Check warning fields
-    for field in fields.get("warning", []):
-        value = data.get(field, "")
-        if not value or value == "" or value == "N/A":
-            issues.append((field, "warning", f"⚠️ Campo recomendado '{field}' está vacío"))
+    # Check all severity levels
+    for field_name, rules in structure.get("critical", {}).items():
+        check_field(field_name, rules, "critical")
     
-    # Check info fields
-    for field in fields.get("info", []):
-        value = data.get(field, "")
-        if not value or value == "" or value == "N/A":
-            issues.append((field, "info", f"ℹ️ Campo opcional '{field}' está vacío"))
+    for field_name, rules in structure.get("warning", {}).items():
+        check_field(field_name, rules, "warning")
+    
+    for field_name, rules in structure.get("info", {}).items():
+        check_field(field_name, rules, "info")
     
     return issues
 
