@@ -299,45 +299,57 @@ agrega "es_actualizacion": "Si" al JSON. Prioriza la información según las ins
 """ + text_to_analyze + """
 ===== FIN DEL DOCUMENTO =====
 
-IMPORTANTE: Analiza tablas, encabezados, y texto en cualquier formato.
-Responde ÚNICAMENTE con un JSON válido. Ejemplo de formato:
-municipio: San Pablo
-departamento: Bolívar
-entidad: Alcaldía Municipal
-bpin: 2024000001234
-nombre_proyecto: Construcción de acueducto
-valor_total: 500000000
-duracion: 180
-responsable: Juan Pérez
-cargo: Secretario de Planeación
-objeto: Contratar la construcción...
-necesidad: Se requiere mejorar...
-sector: Agua Potable
-es_actualizacion: No
+INSTRUCCIONES DE EXTRACCIÓN:
+1. Analiza CUIDADOSAMENTE tablas, encabezados, y texto en cualquier formato
+2. Para valores numéricos (valor_total, duracion): extrae SOLO el número sin símbolos de moneda
+3. Para BPIN: busca códigos de 10+ dígitos cerca de "BPIN", "Código", "Identificador"
+4. Para nombre_proyecto: busca el título completo del proyecto, no abreviaturas
+5. Para responsable: busca nombres completos de personas, no entidades
 
-Responde con JSON usando las claves anteriores."""
+Responde ÚNICAMENTE con un JSON válido en este formato exacto:
+{
+  "municipio": "valor extraído",
+  "departamento": "valor extraído",
+  "entidad": "valor extraído",
+  "bpin": "valor extraído",
+  "nombre_proyecto": "valor extraído",
+  "valor_total": "valor numérico sin símbolos",
+  "duracion": "valor numérico en días",
+  "responsable": "nombre completo de persona",
+  "cargo": "cargo del responsable",
+  "objeto": "descripción del objeto contractual",
+  "necesidad": "justificación o problema a resolver",
+  "sector": "sector económico",
+  "plan_nacional": "nombre del plan nacional",
+  "plan_departamental": "nombre del plan departamental",
+  "plan_municipal": "nombre del plan municipal",
+  "poblacion_beneficiada": "descripción de beneficiarios"
+}
+
+Si un campo no está en el documento, omítelo del JSON (no uses null ni "N/A").
+IMPORTANTE: Responde SOLO el JSON, sin explicaciones adicionales."""
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """Eres un experto en extracción de datos de documentos gubernamentales colombianos.
-Tu especialidad es extraer información de:
-- Metodología General Ajustada (MGA)
-- Estudios Previos
+Tu especialidad es extraer información precisa de:
+- Metodología General Ajustada (MGA) - documentos de formulación de proyectos
+- Estudios Previos de contratación
 - Convenios Interadministrativos
 - Certificaciones municipales
 - Documentos Técnicos de Soporte (DTS)
 
-INSTRUCCIONES CRÍTICAS:
-1. Lee TODO el documento cuidadosamente
-2. Extrae TODOS los valores que encuentres, incluso si están en tablas o listas
-3. Para "valor_total" busca: presupuesto, valor del contrato, monto, costo total
-4. Para "objeto" busca: objeto contractual, objeto del convenio, descripción del proyecto
-5. Para "necesidad" busca: justificación, problema a resolver, antecedentes
-6. Para "alcance" busca: actividades, productos, entregables
-7. Para "municipio" y "departamento" busca: ubicación, localización geográfica
-8. Para "responsable" busca: secretario, formulador, representante legal
-9. Si no encuentras un campo exacto, busca sinónimos o información relacionada
-10. NO inventes datos. Si no está, omítelo del JSON.
-11. Responde SOLO con JSON válido, nada más."""),
+REGLAS DE EXTRACCIÓN CRÍTICAS:
+1. Lee TODO el documento y extrae TODOS los valores disponibles
+2. Para "valor_total": busca "presupuesto", "valor del contrato", "monto total", "costo total". Extrae SOLO números.
+3. Para "bpin": busca "Código BPIN", "BPIN", "Identificador". Es un número largo (10+ dígitos).
+4. Para "objeto": busca "objeto contractual", "objeto del convenio", "descripción del proyecto".
+5. Para "necesidad": busca "justificación", "problema central", "antecedentes", "situación actual".
+6. Para "municipio"/"departamento": busca en encabezados, datos de localización geográfica.
+7. Para "responsable": busca nombre de persona (secretario, formulador, representante). NO entidades.
+8. Para planes de desarrollo: busca menciones a PND, Plan Departamental, Plan Municipal.
+9. Si encuentras valores en tablas, extráelos correctamente.
+10. NO inventes datos. Si no encuentras un campo, omítelo.
+11. Responde SOLO con JSON válido, sin markdown ni explicaciones."""),
             ("human", human_message)
         ])
         
@@ -350,9 +362,9 @@ INSTRUCCIONES CRÍTICAS:
             
             # Try to find JSON in response
             json_patterns = [
-                r'\{[\s\S]*\}',  # Any JSON object
-                r'```json\s*([\s\S]*?)\s*```',  # Code block
+                r'```json\s*([\s\S]*?)\s*```',  # Code block (try first)
                 r'```\s*([\s\S]*?)\s*```',  # Generic code block
+                r'\{[\s\S]*\}',  # Any JSON object (fallback)
             ]
             
             for pattern in json_patterns:
@@ -361,8 +373,35 @@ INSTRUCCIONES CRÍTICAS:
                     try:
                         json_str = match.group(1) if '```' in pattern else match.group(0)
                         result = json.loads(json_str)
-                        # Filter out null values and empty strings
-                        return {k: v for k, v in result.items() if v and v != "null" and str(v).strip()}
+                        
+                        # Clean and filter the extracted data
+                        cleaned_result = {}
+                        for k, v in result.items():
+                            if not v or v == "null" or not str(v).strip():
+                                continue
+                            
+                            str_v = str(v).strip()
+                            
+                            # Skip placeholder values
+                            placeholder_phrases = [
+                                "valor extraído", "no encontrado", "no disponible",
+                                "n/a", "por definir", "pendiente", "null"
+                            ]
+                            if str_v.lower() in placeholder_phrases:
+                                continue
+                            
+                            # Clean numeric fields (remove currency symbols and formatting)
+                            if k in ["valor_total", "duracion"]:
+                                # Remove $, dots, commas, spaces
+                                clean_num = re.sub(r'[\$\.,\s]', '', str_v)
+                                # Try to extract just numbers
+                                num_match = re.search(r'\d+', clean_num)
+                                if num_match:
+                                    str_v = num_match.group(0)
+                            
+                            cleaned_result[k] = str_v
+                        
+                        return cleaned_result
                     except json.JSONDecodeError:
                         continue
                         
