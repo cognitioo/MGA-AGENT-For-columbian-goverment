@@ -507,10 +507,42 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
                         
                         if extracted and not extracted.get("error"):
                             st.session_state.extracted_data[doc_type] = extracted
-                            st.success(f"✅ IA extrajo {len(extracted)} campos del documento")
                             
                             # Store raw JSON for display
                             st.session_state[f"{key_prefix}_raw_json"] = extracted
+                            
+                            # IMMEDIATELY apply to widget keys for auto-fill
+                            FIELD_TO_WIDGET = {
+                                "municipio": ["mga_municipio", "uni_municipio", "cert_municipio", "dts_municipio"],
+                                "entidad": ["mga_entidad", "uni_entidad", "cert_entidad", "dts_entidad"],
+                                "bpin": ["mga_bpin", "uni_bpin", "cert_bpin", "dts_bpin"],
+                                "responsable": ["mga_responsable", "uni_responsable", "cert_responsable", "dts_responsable"],
+                                "cargo": ["mga_cargo", "uni_cargo", "cert_cargo", "dts_cargo"],
+                                "departamento": ["mga_depto", "uni_depto", "cert_depto", "dts_depto"],
+                                "nombre_proyecto": ["mga_proyecto", "uni_proyecto", "cert_proyecto", "dts_proyecto"],
+                                "valor_total": ["mga_valor", "uni_valor", "cert_valor", "dts_valor"],
+                                "plan_nacional": ["mga_plan_nacional", "uni_pnd"],
+                                "plan_departamental": ["mga_plan_depto", "uni_pd"],
+                                "plan_municipal": ["mga_plan_mun", "uni_pm"],
+                                "objeto": ["uni_objeto"],
+                                "necesidad": ["uni_necesidad"],
+                                "alcance": ["uni_alcance"],
+                                "sector": ["uni_sector"],
+                                "alcalde": ["uni_alcalde", "cert_alcalde"],
+                                "programa": ["uni_programa", "dts_programa"],
+                                "subprograma": ["uni_subprograma", "dts_subprograma"],
+                            }
+                            
+                            filled_count = 0
+                            for field_name, widget_keys in FIELD_TO_WIDGET.items():
+                                if field_name in extracted and extracted[field_name]:
+                                    value = str(extracted[field_name])
+                                    for widget_key in widget_keys:
+                                        st.session_state[widget_key] = value
+                                    filled_count += 1
+                            
+                            st.success(f"✅ IA extrajo {len(extracted)} campos. {filled_count} campos aplicados al formulario.")
+                            st.rerun()
                         else:
                             st.warning("No se pudieron extraer datos del documento. Complete el formulario manualmente.")
                     except Exception as e:
@@ -530,7 +562,9 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
                 "municipio", "departamento", "entidad", "bpin", "nombre_proyecto",
                 "valor_total", "duracion", "responsable", "cargo", "alcalde",
                 "objeto", "necesidad", "modalidad", "fuente_financiacion",
-                "sector", "poblacion_beneficiada"
+                "sector", "poblacion_beneficiada", "alcance", "programa",
+                "plan_nacional", "plan_departamental", "plan_municipal",
+                "indicador_producto", "meta_producto", "subprograma"
             }
             
             # Separate used and unused data
@@ -577,7 +611,37 @@ def render_data_upload_option(doc_type: str, key_prefix: str) -> dict:
                     # Merge with existing data, keeping context_dump
                     merged = {**st.session_state.extracted_data.get(doc_type, {}), **parsed}
                     st.session_state.extracted_data[doc_type] = merged
-                    st.success("✅ JSON aplicado! Los campos del formulario se actualizarán.")
+                    
+                    # EXPLICIT field-to-widget key mapping (same as sidebar)
+                    FIELD_TO_WIDGET = {
+                        "municipio": ["mga_municipio", "uni_municipio", "cert_municipio", "dts_municipio"],
+                        "entidad": ["mga_entidad", "uni_entidad", "cert_entidad", "dts_entidad"],
+                        "bpin": ["mga_bpin", "uni_bpin", "cert_bpin", "dts_bpin"],
+                        "responsable": ["mga_responsable", "uni_responsable", "cert_responsable", "dts_responsable"],
+                        "cargo": ["mga_cargo", "uni_cargo", "cert_cargo", "dts_cargo"],
+                        "departamento": ["mga_depto", "uni_depto", "cert_depto", "dts_depto"],
+                        "nombre_proyecto": ["mga_proyecto", "uni_proyecto", "cert_proyecto", "dts_proyecto"],
+                        "valor_total": ["mga_valor", "uni_valor", "cert_valor", "dts_valor"],
+                        "plan_nacional": ["mga_plan_nacional", "uni_pnd"],
+                        "plan_departamental": ["mga_plan_depto", "uni_pd"],
+                        "plan_municipal": ["mga_plan_mun", "uni_pm"],
+                        "objeto": ["uni_objeto"],
+                        "necesidad": ["uni_necesidad"],
+                        "alcance": ["uni_alcance"],
+                        "sector": ["uni_sector"],
+                        "alcalde": ["uni_alcalde", "cert_alcalde"],
+                        "programa": ["uni_programa", "dts_programa"],
+                        "subprograma": ["uni_subprograma", "dts_subprograma"],
+                    }
+                    
+                    # Apply to widget keys
+                    for field_name, widget_keys in FIELD_TO_WIDGET.items():
+                        if field_name in parsed and parsed[field_name]:
+                            value = str(parsed[field_name])
+                            for widget_key in widget_keys:
+                                st.session_state[widget_key] = value
+                    
+                    st.success(f"✅ JSON aplicado! {len(parsed)} campos actualizados.")
                     st.rerun()
                 except json.JSONDecodeError as je:
                     st.error(f"JSON inválido: {je}")
