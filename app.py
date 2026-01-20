@@ -785,8 +785,10 @@ def render_sidebar():
                                 # Apply extracted data to matching widget keys
                                 for field_name, widget_keys in FIELD_TO_WIDGET.items():
                                     if field_name in extracted and extracted[field_name]:
+                                        # Convert to string to avoid TypeError with st.text_input
+                                        value = str(extracted[field_name])
                                         for widget_key in widget_keys:
-                                            st.session_state[widget_key] = extracted[field_name]
+                                            st.session_state[widget_key] = value
                                 
                                 st.success(f"✅ Datos extraídos! {len(extracted)} campos encontrados. El formulario se ha actualizado.")
                                 st.rerun()
