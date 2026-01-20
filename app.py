@@ -732,10 +732,18 @@ def render_sidebar():
                         # Extract text from uploaded document
                         from extractors.document_data_extractor import extract_data_from_upload
                         prev_doc.seek(0)
-                        with st.spinner("Extrayendo datos del documento..."):
+                        with st.spinner("Extrayendo datos del documento con IA..."):
+                            # Initialize LLM for AI-powered extraction (same as data upload section)
+                            try:
+                                llm = get_llm("groq_llama")
+                            except Exception as llm_err:
+                                st.warning(f"No se pudo iniciar IA de extracción: {llm_err}. Usando patrones.")
+                                llm = None
+                            
                             extracted = extract_data_from_upload(
                                 prev_doc,
                                 "mga_subsidios",
+                                llm,  # Pass the LLM for AI extraction
                                 user_context=edit_prompt
                             )
                             if extracted and not extracted.get("error"):
