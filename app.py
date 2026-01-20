@@ -751,24 +751,44 @@ def render_sidebar():
                                 st.session_state.extracted_data["mga_subsidios"] = extracted
                                 st.session_state.extracted_data["unified"] = extracted
                                 st.session_state["unified_raw_json"] = extracted
+                                st.session_state["mga_raw_json"] = extracted
                                 st.session_state.edit_instructions_text = edit_prompt
                                 
-                                # Update widget session state to reflect changes immediately
-                                # Map common fields to likely widget keys
-                                widget_prefixes = ["mga_", "uni_", "ep_", "as_", "dts_", "cert_"]
-                                for key, value in extracted.items():
-                                    if value:
-                                        # Try to find matching widget keys
-                                        for prefix in widget_prefixes:
-                                            widget_key = f"{prefix}{key}"
-                                            if widget_key in st.session_state:
-                                                st.session_state[widget_key] = value
-                                        
-                                        # Also try exact matches (some fields might match directly)
-                                        if key in st.session_state:
-                                            st.session_state[key] = value
-
-                                st.success("✅ Datos extraídos! El formulario se ha actualizado.")
+                                # EXPLICIT field-to-widget key mapping for all forms
+                                # Maps extracted field name -> list of possible widget keys
+                                FIELD_TO_WIDGET = {
+                                    # Common fields with exact matches
+                                    "municipio": ["mga_municipio", "uni_municipio", "cert_municipio", "dts_municipio"],
+                                    "entidad": ["mga_entidad", "uni_entidad", "cert_entidad", "dts_entidad"],
+                                    "bpin": ["mga_bpin", "uni_bpin", "cert_bpin", "dts_bpin"],
+                                    "responsable": ["mga_responsable", "uni_responsable", "cert_responsable", "dts_responsable"],
+                                    "cargo": ["mga_cargo", "uni_cargo", "cert_cargo", "dts_cargo"],
+                                    
+                                    # Fields with abbreviated widget keys
+                                    "departamento": ["mga_depto", "uni_depto", "cert_depto", "dts_depto"],
+                                    "nombre_proyecto": ["mga_proyecto", "uni_proyecto", "cert_proyecto", "dts_proyecto"],
+                                    "valor_total": ["mga_valor", "uni_valor", "cert_valor", "dts_valor"],
+                                    
+                                    # Plan fields with different suffixes
+                                    "plan_nacional": ["mga_plan_nacional", "uni_pnd"],
+                                    "plan_departamental": ["mga_plan_depto", "uni_pd"],
+                                    "plan_municipal": ["mga_plan_mun", "uni_pm"],
+                                    
+                                    # Other fields
+                                    "objeto": ["uni_objeto"],
+                                    "necesidad": ["uni_necesidad"],
+                                    "alcance": ["uni_alcance"],
+                                    "sector": ["uni_sector"],
+                                    "alcalde": ["uni_alcalde", "cert_alcalde"],
+                                }
+                                
+                                # Apply extracted data to matching widget keys
+                                for field_name, widget_keys in FIELD_TO_WIDGET.items():
+                                    if field_name in extracted and extracted[field_name]:
+                                        for widget_key in widget_keys:
+                                            st.session_state[widget_key] = extracted[field_name]
+                                
+                                st.success(f"✅ Datos extraídos! {len(extracted)} campos encontrados. El formulario se ha actualizado.")
                                 st.rerun()
                             else:
                                 st.error("❌ No se pudo extraer datos del documento")
@@ -1618,10 +1638,15 @@ def run_generation_logic(doc_type: str, data: dict, model: str):
 
 
 def render_sidebar_generation_controls(doc_type: str, data: dict, selected_model: str, validation_issues: list):
-    """Render generation and download controls in the sidebar"""
+    """Render generation status and download controls in the sidebar"""
     with st.sidebar:
         st.markdown("---")
-        st.markdown("### ⚡ Acciones")
+        st.markdown("### 📊 Estado")
+        
+        # Show current mode
+        mode = st.session_state.get('generation_mode', 'crear_nuevo')
+        mode_text = "🆕 Crear nuevo" if mode == "crear_nuevo" else "🔄 Actualizar existente"
+        st.info(f"Modo: {mode_text}")
         
         # Validation Status Summary
         if validation_issues:
@@ -1633,28 +1658,21 @@ def render_sidebar_generation_controls(doc_type: str, data: dict, selected_model
                 st.warning(f"⚠️ {warn} recomendaciones")
             else:
                 st.success("✅ Datos validados")
+        else:
+            st.success("✅ Datos listos")
         
-        # Generate Button
-        if st.button("🚀 Generar Documento", key="sidebar_generate_btn", type="primary", use_container_width=True):
-            # Check validation
-            has_fake_data = any("PROHIBIDO" in issue[2] for issue in validation_issues if len(issue) > 2)
-            if has_fake_data:
-                st.error("Datos incorrectos. Revise el panel principal.")
-            else:
-                result = run_generation_logic(doc_type, data, selected_model)
-                if result:
-                    st.success("Generación completada!")
-                    st.rerun() # Rerun to show download buttons
+        # Hint to use main button
+        st.caption("💡 Use el botón '🚀 Generar' en el panel principal")
         
         # Download Button (if file is ready)
         if st.session_state.generated_file and os.path.exists(st.session_state.generated_file):
-            st.markdown("### 📥 Descarga")
+            st.markdown("### 📥 Descarga Rápida")
             file_path = st.session_state.generated_file
             file_name = os.path.basename(file_path)
             
             with open(file_path, "rb") as f:
                 st.download_button(
-                    label=f"⬇️ Descargar {file_name}",
+                    label=f"⬇️ {file_name}",
                     data=f,
                     file_name=file_name,
                     mime="application/pdf" if file_path.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
