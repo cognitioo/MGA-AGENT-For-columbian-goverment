@@ -321,7 +321,7 @@ agrega "es_actualizacion": "Si" al JSON. Prioriza la información según las ins
    NUNCA extraer "valor total", "presupuesto", u otras etiquetas
 
 Responde con JSON válido. Ejemplo de respuesta CORRECTA:
-{
+{{
   "municipio": "San Pablo",
   "departamento": "Bolívar", 
   "bpin": "202500000011507",
@@ -329,7 +329,7 @@ Responde con JSON válido. Ejemplo de respuesta CORRECTA:
   "valor_total": "309909217",
   "responsable": "Roxana Cáceres Quiñonez",
   "sector": "Agricultura y desarrollo rural"
-}
+}}
 
 Si no encuentras un valor REAL (no etiquetas), omite ese campo."""
 
