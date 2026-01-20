@@ -299,57 +299,70 @@ agrega "es_actualizacion": "Si" al JSON. Prioriza la información según las ins
 """ + text_to_analyze + """
 ===== FIN DEL DOCUMENTO =====
 
-INSTRUCCIONES DE EXTRACCIÓN:
-1. Analiza CUIDADOSAMENTE tablas, encabezados, y texto en cualquier formato
-2. Para valores numéricos (valor_total, duracion): extrae SOLO el número sin símbolos de moneda
-3. Para BPIN: busca códigos de 10+ dígitos cerca de "BPIN", "Código", "Identificador"
-4. Para nombre_proyecto: busca el título completo del proyecto, no abreviaturas
-5. Para responsable: busca nombres completos de personas, no entidades
+⚠️ REGLAS CRÍTICAS - LEE CUIDADOSAMENTE:
 
-Responde ÚNICAMENTE con un JSON válido en este formato exacto:
+1. EXTRAE VALORES REALES, NO ETIQUETAS:
+   ❌ INCORRECTO: "bpin": "Código BPIN" o "01 - datos básicos"
+   ✅ CORRECTO: "bpin": "202500000011507"
+   
+2. BPIN es un NÚMERO de 10+ dígitos (ej: 202500000011507)
+   NUNCA extraer textos como "datos básicos", "Identificador:", "Código BPIN"
+   
+3. MUNICIPIO es un NOMBRE DE CIUDAD (ej: "San Pablo", "Cartagena")
+   NUNCA extraer "municipio de" o nombres genéricos
+
+4. NOMBRE_PROYECTO es el TÍTULO COMPLETO del proyecto
+   NUNCA extraer "Tipología", "Nombre", u otras etiquetas
+
+5. RESPONSABLE es un NOMBRE DE PERSONA (ej: "Roxana Cáceres Quiñonez")
+   NUNCA extraer "Formulador Ciudadano:", "ciudadano:", u otras etiquetas
+
+6. VALOR_TOTAL es un NÚMERO (ej: 309909217)
+   NUNCA extraer "valor total", "presupuesto", u otras etiquetas
+
+Responde con JSON válido. Ejemplo de respuesta CORRECTA:
 {
-  "municipio": "valor extraído",
-  "departamento": "valor extraído",
-  "entidad": "valor extraído",
-  "bpin": "valor extraído",
-  "nombre_proyecto": "valor extraído",
-  "valor_total": "valor numérico sin símbolos",
-  "duracion": "valor numérico en días",
-  "responsable": "nombre completo de persona",
-  "cargo": "cargo del responsable",
-  "objeto": "descripción del objeto contractual",
-  "necesidad": "justificación o problema a resolver",
-  "sector": "sector económico",
-  "plan_nacional": "nombre del plan nacional",
-  "plan_departamental": "nombre del plan departamental",
-  "plan_municipal": "nombre del plan municipal",
-  "poblacion_beneficiada": "descripción de beneficiarios"
+  "municipio": "San Pablo",
+  "departamento": "Bolívar", 
+  "bpin": "202500000011507",
+  "nombre_proyecto": "Apoyo a pequeños productores del municipio",
+  "valor_total": "309909217",
+  "responsable": "Roxana Cáceres Quiñonez",
+  "sector": "Agricultura y desarrollo rural"
 }
 
-Si un campo no está en el documento, omítelo del JSON (no uses null ni "N/A").
-IMPORTANTE: Responde SOLO el JSON, sin explicaciones adicionales."""
+Si no encuentras un valor REAL (no etiquetas), omite ese campo."""
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Eres un experto en extracción de datos de documentos gubernamentales colombianos.
-Tu especialidad es extraer información precisa de:
-- Metodología General Ajustada (MGA) - documentos de formulación de proyectos
-- Estudios Previos de contratación
-- Convenios Interadministrativos
-- Certificaciones municipales
-- Documentos Técnicos de Soporte (DTS)
+            ("system", """Eres un experto en extracción de datos de documentos MGA colombianos.
 
-REGLAS DE EXTRACCIÓN CRÍTICAS:
-1. Lee TODO el documento y extrae TODOS los valores disponibles
-2. Para "valor_total": busca "presupuesto", "valor del contrato", "monto total", "costo total". Extrae SOLO números.
-3. Para "bpin": busca "Código BPIN", "BPIN", "Identificador". Es un número largo (10+ dígitos).
-4. Para "objeto": busca "objeto contractual", "objeto del convenio", "descripción del proyecto".
-5. Para "necesidad": busca "justificación", "problema central", "antecedentes", "situación actual".
-6. Para "municipio"/"departamento": busca en encabezados, datos de localización geográfica.
-7. Para "responsable": busca nombre de persona (secretario, formulador, representante). NO entidades.
-8. Para planes de desarrollo: busca menciones a PND, Plan Departamental, Plan Municipal.
-9. Si encuentras valores en tablas, extráelos correctamente.
-10. NO inventes datos. Si no encuentras un campo, omítelo.
-11. Responde SOLO con JSON válido, sin markdown ni explicaciones."""),
+REGLA #1 MÁS IMPORTANTE: 
+NUNCA extraigas etiquetas, títulos de sección, o nombres de campos como valores.
+Busca los DATOS REALES que aparecen DESPUÉS de cada etiqueta.
+
+EJEMPLOS DE LO QUE NO DEBES EXTRAER:
+- "01 - Datos básicos del proyecto" → esto es un TÍTULO de sección
+- "Tipología" → esto es una ETIQUETA
+- "Código BPIN" → esto es una ETIQUETA
+- "Formulador Ciudadano:" → esto es una ETIQUETA
+- "valor extraído" → esto es placeholder
+
+EJEMPLOS DE LO QUE SÍ DEBES EXTRAER:
+- El número "202500000011507" que aparece después de "Código BPIN"
+- El nombre "San Pablo" que aparece después de "Municipio"
+- El número "309909217" que aparece después de "Valor Total"
+- El nombre "Roxana Cáceres Quiñonez" que aparece después de "Formulador"
+
+CAMPOS A EXTRAER:
+- bpin: número largo (10+ dígitos) - SOLO NÚMEROS
+- municipio: nombre de ciudad colombiana
+- departamento: nombre de departamento colombiano
+- nombre_proyecto: título descriptivo del proyecto
+- valor_total: cantidad numérica (sin símbolo $)
+- responsable: nombre completo de persona
+- sector: nombre del sector económico
+
+Responde SOLO con JSON válido, sin explicaciones."""),
             ("human", human_message)
         ])
         
