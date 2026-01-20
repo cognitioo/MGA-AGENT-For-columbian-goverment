@@ -1640,34 +1640,11 @@ def run_generation_logic(doc_type: str, data: dict, model: str):
 
 
 def render_sidebar_generation_controls(doc_type: str, data: dict, selected_model: str, validation_issues: list):
-    """Render generation status and download controls in the sidebar"""
+    """Render download controls in the sidebar (only when file is ready)"""
     with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 📊 Estado")
-        
-        # Show current mode
-        mode = st.session_state.get('generation_mode', 'crear_nuevo')
-        mode_text = "🆕 Crear nuevo" if mode == "crear_nuevo" else "🔄 Actualizar existente"
-        st.info(f"Modo: {mode_text}")
-        
-        # Validation Status Summary
-        if validation_issues:
-            crit = len([i for i in validation_issues if i[1] == "critical"])
-            warn = len([i for i in validation_issues if i[1] == "warning"])
-            if crit > 0:
-                st.error(f"⛔ {crit} errores críticos")
-            elif warn > 0:
-                st.warning(f"⚠️ {warn} recomendaciones")
-            else:
-                st.success("✅ Datos validados")
-        else:
-            st.success("✅ Datos listos")
-        
-        # Hint to use main button
-        st.caption("💡 Use el botón '🚀 Generar' en el panel principal")
-        
-        # Download Button (if file is ready)
+        # Download Button (if file is ready) - this is the ONLY thing shown
         if st.session_state.generated_file and os.path.exists(st.session_state.generated_file):
+            st.markdown("---")
             st.markdown("### 📥 Descarga Rápida")
             file_path = st.session_state.generated_file
             file_name = os.path.basename(file_path)
@@ -1692,6 +1669,34 @@ def main():
     # Main header
     st.markdown(f'<p class="main-header">{APP_TITLE}</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="sub-header">{APP_DESCRIPTION}</p>', unsafe_allow_html=True)
+    
+    # ═══════════════════════════════════════════════════════════════
+    # PROMINENT MODE BANNER - Clear visual differentiation
+    # ═══════════════════════════════════════════════════════════════
+    mode = st.session_state.get('generation_mode', 'crear_nuevo')
+    
+    if mode == "crear_nuevo":
+        st.markdown("""
+        <div style="background: linear-gradient(90deg, #2E7D32 0%, #43A047 100%); 
+                    color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 16px;
+                    font-size: 16px; font-weight: 600; text-align: center;">
+            🆕 MODO: CREAR DOCUMENTO NUEVO
+            <span style="font-weight: 400; font-size: 13px; display: block; margin-top: 4px;">
+                Complete el formulario y genere un documento desde cero
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="background: linear-gradient(90deg, #1565C0 0%, #1976D2 100%); 
+                    color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 16px;
+                    font-size: 16px; font-weight: 600; text-align: center;">
+            🔄 MODO: ACTUALIZAR DOCUMENTO EXISTENTE
+            <span style="font-weight: 400; font-size: 13px; display: block; margin-top: 4px;">
+                Suba un PDF/DOCX en el sidebar → Procesar → Los datos se llenarán automáticamente
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Document type selection
     st.markdown("**Seleccionar Tipo de Documento**")
