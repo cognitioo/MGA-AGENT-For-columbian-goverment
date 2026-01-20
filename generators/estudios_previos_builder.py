@@ -388,6 +388,9 @@ class EstudiosPreviosDirectBuilder:
         """Add OBJETO Y ALCANCE section with text content AND budget table integrated"""
         objeto_text = ai_content.get("objeto_alcance", "")
         rubros = ai_content.get("presupuesto", [])
+        # Defensive: ensure rubros is a list
+        if not isinstance(rubros, list):
+            rubros = []
         valor = data.get('valor_total', '0')
         bpin = data.get('bpin', '')
         
@@ -546,6 +549,9 @@ class EstudiosPreviosDirectBuilder:
     
     def _add_riesgos_section(self, riesgos: list):
         """Add ANÁLISIS DE RIESGOS section - simplified structure"""
+        # Defensive: ensure riesgos is a list
+        if not isinstance(riesgos, list):
+            riesgos = []
         # Rows: 1 header + 1 column headers + N data rows
         num_data_rows = len(riesgos) if riesgos else 0
         total_rows = 2 + num_data_rows

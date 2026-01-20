@@ -171,10 +171,10 @@ class MGASubsidiosBuilder:
         run_value.font.size = Pt(10)
     
     def _add_page_1_datos_basicos(self, content: dict):
-        """Add Page 1 - Datos Básicos"""
+        """Add Page 1 - Datos Básicos with proper table structure matching client template"""
         self._add_header("Datos básicos")
         
-        # Title section (dark blue bar would be here in actual MGA)
+        # Title bar (project name in small text at top)
         p_title = self.doc.add_paragraph()
         run = p_title.add_run(content.get("titulo_documento", ""))
         run.font.size = Pt(8)
@@ -183,37 +183,92 @@ class MGASubsidiosBuilder:
         self._add_section_title("Datos básicos")
         self._add_subsection_title("01 - Datos básicos del proyecto")
         
+        # Nombre field
         self._add_field("Nombre", content.get("nombre", ""))
         
-        # Two columns: Tipología and Código BPIN
-        p = self.doc.add_paragraph()
-        run1 = p.add_run("Tipología\n")
-        run1.font.size = Pt(10)
-        run1.font.color.rgb = RGBColor(0, 128, 128)
-        run1v = p.add_run(content.get("tipologia", ""))
-        run1v.font.size = Pt(10)
+        # Add horizontal separator (thin line)
+        self._add_horizontal_line()
         
-        p.add_run("                    ")
+        # TWO-COLUMN TABLE: Tipología | Código BPIN
+        table_tipo_bpin = self.doc.add_table(rows=2, cols=2)
+        table_tipo_bpin.autofit = True
         
-        run2 = p.add_run("Código BPIN\n")
-        run2.font.size = Pt(10)
-        run2.font.color.rgb = RGBColor(0, 128, 128)
-        run2v = p.add_run(content.get("codigo_bpin", ""))
-        run2v.font.size = Pt(10)
+        # Row 0: Labels
+        cell_tipo_label = table_tipo_bpin.rows[0].cells[0]
+        cell_bpin_label = table_tipo_bpin.rows[0].cells[1]
         
+        run_tipo = cell_tipo_label.paragraphs[0].add_run("Tipología")
+        run_tipo.font.size = Pt(10)
+        run_tipo.font.color.rgb = RGBColor(0, 128, 128)
+        
+        run_bpin = cell_bpin_label.paragraphs[0].add_run("Código BPIN")
+        run_bpin.font.size = Pt(10)
+        run_bpin.font.color.rgb = RGBColor(0, 128, 128)
+        
+        # Row 1: Values
+        cell_tipo_val = table_tipo_bpin.rows[1].cells[0]
+        cell_bpin_val = table_tipo_bpin.rows[1].cells[1]
+        
+        tipo_text = cell_tipo_val.paragraphs[0].add_run(content.get("tipologia", "A - PIIP - Bienes y Servicios"))
+        tipo_text.font.size = Pt(10)
+        
+        bpin_text = cell_bpin_val.paragraphs[0].add_run(content.get("codigo_bpin", ""))
+        bpin_text.font.size = Pt(10)
+        
+        self._add_horizontal_line()
+        
+        # Sector field
         self._add_field("Sector", content.get("sector", ""))
         
-        # Es Proyecto Tipo and Fecha creación
-        p2 = self.doc.add_paragraph()
-        p2.add_run("Es Proyecto Tipo: ").font.color.rgb = RGBColor(0, 128, 128)
-        p2.add_run(content.get("es_proyecto_tipo", "No"))
-        p2.add_run("                    ")
-        p2.add_run("Fecha creación: ").font.color.rgb = RGBColor(0, 128, 128)
-        p2.add_run(content.get("fecha_creacion", ""))
+        self._add_horizontal_line()
         
+        # TWO-COLUMN: Es Proyecto Tipo | Fecha creación
+        table_tipo_fecha = self.doc.add_table(rows=1, cols=2)
+        table_tipo_fecha.autofit = True
+        
+        cell_es_tipo = table_tipo_fecha.rows[0].cells[0]
+        cell_fecha = table_tipo_fecha.rows[0].cells[1]
+        
+        p_es = cell_es_tipo.paragraphs[0]
+        run_es_label = p_es.add_run("Es Proyecto Tipo: ")
+        run_es_label.font.size = Pt(10)
+        run_es_label.font.color.rgb = RGBColor(0, 128, 128)
+        run_es_val = p_es.add_run(content.get("es_proyecto_tipo", "No"))
+        run_es_val.font.size = Pt(10)
+        
+        p_fecha = cell_fecha.paragraphs[0]
+        run_fecha_label = p_fecha.add_run("Fecha creación: ")
+        run_fecha_label.font.size = Pt(10)
+        run_fecha_label.font.color.rgb = RGBColor(0, 128, 128)
+        run_fecha_val = p_fecha.add_run(content.get("fecha_creacion", datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        run_fecha_val.font.size = Pt(10)
+        
+        self._add_horizontal_line()
+        
+        # Identificador
         self._add_field("Identificador:", content.get("identificador", ""))
+        
+        # TWO-COLUMN: Formulador Ciudadano | Value
         self._add_field("Formulador Ciudadano:", content.get("formulador_ciudadano", ""))
+        
+        # TWO-COLUMN: Formulador Oficial | Value  
         self._add_field("Formulador Oficial:", content.get("formulador_oficial", ""))
+    
+    def _add_horizontal_line(self):
+        """Add a thin horizontal separator line"""
+        p = self.doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after = Pt(2)
+        # Create a simple border line using a paragraph border
+        pPr = p._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bottom = OxmlElement('w:bottom')
+        bottom.set(qn('w:val'), 'single')
+        bottom.set(qn('w:sz'), '4')
+        bottom.set(qn('w:space'), '1')
+        bottom.set(qn('w:color'), 'CCCCCC')
+        pBdr.append(bottom)
+        pPr.append(pBdr)
     
     def _add_page_2_plan_desarrollo(self, content: dict):
         """Add Page 2 - Plan de Desarrollo"""
