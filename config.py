@@ -37,7 +37,7 @@ LLM_PROVIDERS = {
     },
     "groq_llama": {
         "name": "Groq Llama (Extracción)",
-        "model": "openai/gpt-oss-120b",  # More powerful model for accurate extraction
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",  # Higher rate limits
         "env_key": "GROQ_API_KEY",
     },
     "gemini": {
