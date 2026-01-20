@@ -32,7 +32,7 @@ def get_secret(key: str, default: str = "") -> str:
 LLM_PROVIDERS = {
     "groq": {
         "name": "Groq (Rápido)",
-        "model": "openai/gpt-oss-120b",
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
         "env_key": "GROQ_API_KEY",
     },
     "groq_llama": {
