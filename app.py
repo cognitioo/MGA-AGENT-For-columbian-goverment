@@ -1782,6 +1782,73 @@ def main():
     
     st.markdown("---")
     
+    # ═══════════════════════════════════════════════════════════════
+    # DEDICATED UPDATE MODE VIEW
+    # ═══════════════════════════════════════════════════════════════
+    if mode == "actualizar_existente":
+        # Step-by-step update workflow display
+        st.markdown("""
+        <div style="background: #E3F2FD; border-left: 4px solid #1976D2; padding: 16px; border-radius: 4px; margin-bottom: 20px;">
+            <h4 style="margin: 0 0 8px 0; color: #1565C0;">📋 Flujo de Actualización</h4>
+            <ol style="margin: 0; padding-left: 20px; color: #333;">
+                <li><strong>Sidebar izquierdo:</strong> Suba su documento PDF/DOCX</li>
+                <li><strong>Sidebar izquierdo:</strong> Describa qué desea modificar</li>
+                <li><strong>Sidebar izquierdo:</strong> Clic en "🚀 Procesar Edición"</li>
+                <li><strong>Panel principal:</strong> Revise y ajuste los datos extraídos abajo</li>
+                <li><strong>Panel principal:</strong> Clic en "🚀 Generar Documento(s)"</li>
+            </ol>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Show extraction status
+        has_extracted = bool(st.session_state.extracted_data.get(doc_type) or st.session_state.extracted_data.get("unified"))
+        has_document = st.session_state.get("previous_document") is not None
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if has_document:
+                st.success("✅ Documento cargado")
+            else:
+                st.warning("⏳ Esperando documento")
+        with col2:
+            edit_instructions = st.session_state.get("edit_instructions_text", "")
+            if edit_instructions:
+                st.success("✅ Instrucciones definidas")
+            else:
+                st.warning("⏳ Sin instrucciones")
+        with col3:
+            if has_extracted:
+                st.success("✅ Datos extraídos")
+            else:
+                st.warning("⏳ Sin extracción")
+        
+        st.markdown("---")
+        
+        # Show extracted data preview if available
+        if has_extracted:
+            extracted_data = st.session_state.extracted_data.get(doc_type) or st.session_state.extracted_data.get("unified") or {}
+            
+            st.markdown("### 📊 Datos Extraídos del Documento")
+            
+            # Show key extracted fields in a grid
+            if extracted_data:
+                cols = st.columns(3)
+                field_labels = {
+                    "municipio": "Municipio",
+                    "departamento": "Departamento", 
+                    "nombre_proyecto": "Proyecto",
+                    "valor_total": "Valor Total",
+                    "responsable": "Responsable",
+                    "bpin": "BPIN"
+                }
+                
+                for idx, (key, label) in enumerate(field_labels.items()):
+                    with cols[idx % 3]:
+                        value = extracted_data.get(key, "—")
+                        st.metric(label, value if value else "—")
+                
+                st.markdown("---")
+    
     # Render appropriate form
     if doc_type == "unified":
         data = render_unified_form()
