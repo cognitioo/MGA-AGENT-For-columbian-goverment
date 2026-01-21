@@ -1387,12 +1387,141 @@ def render_certificaciones_form():
 
 
 def render_mga_subsidios_form():
-    """Render input form for MGA Subsidios document"""
+    """Render input form for MGA (General) document - accepts POAI + Dev Plan inputs"""
     
-    # Data extraction option
-    extracted = render_data_upload_option("mga_subsidios", "mga")
+    # ============================================================
+    # FILE UPLOADS SECTION - POAI + Development Plan
+    # ============================================================
+    st.markdown('<p class="section-header">📁 Archivos de Entrada (POAI + Plan de Desarrollo)</p>', unsafe_allow_html=True)
     
-    st.markdown('<p class="section-header">Datos Básicos del Proyecto</p>', unsafe_allow_html=True)
+    st.info("**Modo recomendado:** Suba los archivos del proyecto y la IA extraerá los datos automáticamente para generar el MGA.")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        poai_file = st.file_uploader(
+            "📊 POAI (Excel .xlsx)",
+            type=["xlsx", "xls"],
+            help="Plan Operativo Anual de Inversiones en formato Excel",
+            key="mga_poai_file"
+        )
+    
+    with col2:
+        dev_plan_file = st.file_uploader(
+            "📋 Plan de Desarrollo (Word .docx)",
+            type=["docx"],
+            help="Plan de Desarrollo Municipal/Departamental",
+            key="mga_devplan_file"
+        )
+    
+    with col3:
+        basic_info_file = st.file_uploader(
+            "📝 Info Adicional (PDF/Word)",
+            type=["pdf", "docx"],
+            help="Documentos adicionales con información del proyecto",
+            key="mga_basicinfo_file"
+        )
+    
+    # Extract data from uploaded files
+    extracted = {}
+    context_dump = ""
+    
+    # Process POAI (XLSX)
+    if poai_file:
+        try:
+            import pandas as pd
+            # Read all sheets
+            xlsx = pd.ExcelFile(poai_file)
+            poai_text = ""
+            for sheet_name in xlsx.sheet_names:
+                df = pd.read_excel(xlsx, sheet_name=sheet_name)
+                poai_text += f"\n=== Hoja: {sheet_name} ===\n"
+                poai_text += df.to_string(index=False)[:3000]  # Limit per sheet
+            
+            context_dump += f"\n\n=== DATOS DEL POAI ===\n{poai_text[:8000]}"
+            
+            # Try to extract key fields
+            for sheet_name in xlsx.sheet_names:
+                df = pd.read_excel(xlsx, sheet_name=sheet_name)
+                for col in df.columns:
+                    col_lower = str(col).lower()
+                    if 'bpin' in col_lower or 'codigo' in col_lower:
+                        vals = df[col].dropna().astype(str).tolist()
+                        for v in vals:
+                            if len(v) > 8 and v.isdigit():
+                                extracted['bpin'] = v
+                                break
+                    if 'municipio' in col_lower:
+                        vals = df[col].dropna().astype(str).tolist()
+                        if vals:
+                            extracted['municipio'] = vals[0]
+                    if 'proyecto' in col_lower or 'nombre' in col_lower:
+                        vals = df[col].dropna().astype(str).tolist()
+                        if vals and len(vals[0]) > 10:
+                            extracted['nombre_proyecto'] = vals[0]
+                    if 'valor' in col_lower or 'total' in col_lower:
+                        vals = df[col].dropna().tolist()
+                        for v in vals:
+                            if isinstance(v, (int, float)) and v > 100000:
+                                extracted['valor_total'] = str(int(v))
+                                break
+            
+            st.success(f"✅ POAI cargado: {len(xlsx.sheet_names)} hojas procesadas")
+        except Exception as e:
+            st.warning(f"⚠️ Error procesando POAI: {e}")
+    
+    # Process Development Plan (DOCX)
+    if dev_plan_file:
+        try:
+            import docx
+            doc = docx.Document(dev_plan_file)
+            dev_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])[:10000]
+            context_dump += f"\n\n=== PLAN DE DESARROLLO ===\n{dev_text}"
+            
+            # Extract plan names
+            import re
+            plan_match = re.search(r'Plan\s+(?:de\s+)?Desarrollo\s+(?:Municipal|Distrital)?\s*[:\-]?\s*([^\n]+)', dev_text, re.I)
+            if plan_match:
+                extracted['plan_municipal'] = plan_match.group(1).strip()[:100]
+            
+            st.success(f"✅ Plan de Desarrollo cargado: {len(dev_text)} caracteres")
+        except Exception as e:
+            st.warning(f"⚠️ Error procesando Plan: {e}")
+    
+    # Process Additional Info (PDF/DOCX)
+    if basic_info_file:
+        try:
+            if basic_info_file.name.endswith('.pdf'):
+                import fitz  # PyMuPDF
+                pdf = fitz.open(stream=basic_info_file.read(), filetype="pdf")
+                basic_text = ""
+                for page in pdf:
+                    basic_text += page.get_text()[:2000]
+                context_dump += f"\n\n=== INFORMACIÓN ADICIONAL ===\n{basic_text[:5000]}"
+            else:
+                import docx
+                doc = docx.Document(basic_info_file)
+                basic_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])[:5000]
+                context_dump += f"\n\n=== INFORMACIÓN ADICIONAL ===\n{basic_text}"
+            
+            st.success(f"✅ Info adicional cargada")
+        except Exception as e:
+            st.warning(f"⚠️ Error procesando info adicional: {e}")
+    
+    # Also allow manual data extraction from existing MGA
+    st.markdown("---")
+    st.markdown('<p class="section-header">📤 O extraer datos de MGA existente</p>', unsafe_allow_html=True)
+    manual_extracted = render_data_upload_option("mga_subsidios", "mga")
+    
+    # Merge extracted data (file uploads take priority)
+    for k, v in manual_extracted.items():
+        if k not in extracted or not extracted[k]:
+            extracted[k] = v
+    
+    # ============================================================
+    # FORM FIELDS - Auto-filled from extracted data
+    # ============================================================
+    st.markdown('<p class="section-header">📋 Datos Básicos del Proyecto</p>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
@@ -1409,7 +1538,7 @@ def render_mga_subsidios_form():
         duracion = st.number_input("Duración (días)", min_value=1, value=365, key="mga_duracion")
         fecha_creacion = st.text_input("Fecha Creación", value=datetime.now().strftime("%d/%m/%Y %H:%M:%S"), key="mga_fecha")
     
-    st.markdown('<p class="section-header">Planes de Desarrollo</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">📊 Planes de Desarrollo</p>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -1432,7 +1561,7 @@ def render_mga_subsidios_form():
             key="mga_plan_mun"
         )
     
-    st.markdown('<p class="section-header">Membrete/Letterhead</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">📄 Membrete/Letterhead</p>', unsafe_allow_html=True)
     
     letterhead_file = st.file_uploader(
         "Subir plantilla con membrete (.docx)",
@@ -1441,7 +1570,7 @@ def render_mga_subsidios_form():
         key="mga_letterhead"
     )
     
-    st.markdown('<p class="section-header">Responsable</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">👤 Responsable</p>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -1464,7 +1593,8 @@ def render_mga_subsidios_form():
         "plan_municipal": plan_municipal,
         "responsable": responsable,
         "cargo": cargo,
-        "letterhead_file": letterhead_file
+        "letterhead_file": letterhead_file,
+        "context_dump": context_dump  # Pass extracted text to AI
     }
 
 

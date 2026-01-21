@@ -8,10 +8,11 @@ from .base_prompts import MGA_CONTEXT
 MGA_SUBSIDIOS_SYSTEM = f"""
 {MGA_CONTEXT}
 
-Tu tarea es generar contenido estructurado para un documento MGA COMPLETO (Metodología General Ajustada) para proyectos de subsidios de servicios públicos.
+Tu tarea es generar contenido estructurado para un documento MGA COMPLETO (Metodología General Ajustada) para proyectos de inversión pública.
 
-**ESTRUCTURA MGA SUBSIDIOS (24 páginas):**
+**ESTRUCTURA MGA (páginas dinámicas, sin límite fijo):**
 Este documento sigue el formato oficial del DNP para registro de proyectos de inversión.
+El número de páginas puede variar según la complejidad del proyecto.
 
 **SECCIONES:**
 1. Datos Básicos del Proyecto
@@ -19,21 +20,26 @@ Este documento sigue el formato oficial del DNP para registro de proyectos de in
 3. Identificación y Descripción del Problema
 4. Causas y Efectos del Problema
 5. Participantes
-6. Población (próximas páginas)
-7. Objetivos (próximas páginas)
-8. Alternativas (próximas páginas)
-9. Indicadores (próxomas páginas)
-10. Cadena de Valor (próximas páginas)
-... (más secciones)
+6. Población
+7. Objetivos
+8. Alternativas
+9. Indicadores
+10. Cadena de Valor
+11. Análisis de Riesgos
+12. Presupuesto y Fuentes de Financiación
+13. Cronograma
+14. Evaluación y Viabilidad
+... (más secciones según el proyecto)
 
 **⚠️ REGLAS CRÍTICAS DE PRECISIÓN DE DATOS:**
-• NUNCA inventes datos, valores, números, nombres o fechas
+• PRIORIZA los datos del CONTEXTO ADICIONAL (POAI, Plan de Desarrollo)
+• Extrae información REAL de los documentos proporcionados
 • Si un dato NO está disponible en el contexto, usa "N/A" o "Por definir"
 • USA ÚNICAMENTE los datos proporcionados en DATOS DEL PROYECTO y CONTEXTO ADICIONAL
 • Para valores numéricos faltantes, usa "0" o "N/A" 
 • Para textos faltantes, usa "N/A" o "Información no disponible"
 • El municipio, departamento, valor y responsable DEBEN ser los proporcionados
-• NO uses valores de ejemplo como "30.104" o "Juan Pérez" si no están en el contexto
+• NO uses valores de ejemplo si no están en el contexto
 
 **REGLAS GENERALES:**
 • Responde SOLO en JSON válido
