@@ -89,7 +89,8 @@ def get_available_providers():
     """Return list of providers that have API keys configured"""
     available = []
     for provider_id, config in LLM_PROVIDERS.items():
-        api_key = os.getenv(config["env_key"], "")
+        # USE get_secret() instead of os.getenv() to ensure Cloud works
+        api_key = get_secret(config["env_key"], "")
         if api_key:
             available.append({
                 "id": provider_id,

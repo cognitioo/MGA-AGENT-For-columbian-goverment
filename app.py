@@ -655,19 +655,19 @@ def get_model_options():
     options = {}
     
     # Check for Groq (priority)
-    if os.getenv("GROQ_API_KEY"):
+    if get_secret("GROQ_API_KEY"):
         options["groq"] = "Groq - Llama (Rápido)"
     
     # Check for Gemini
-    if os.getenv("GOOGLE_API_KEY"):
+    if get_secret("GOOGLE_API_KEY"):
         options["gemini"] = "Google Gemini"
     
     # Check for OpenAI
-    if os.getenv("OPENAI_API_KEY"):
+    if get_secret("OPENAI_API_KEY"):
         options["openai"] = "OpenAI GPT-4"
     
     # Check for Anthropic
-    if os.getenv("ANTHROPIC_API_KEY"):
+    if get_secret("ANTHROPIC_API_KEY"):
         options["anthropic"] = "Anthropic Claude"
     
     if not options:
