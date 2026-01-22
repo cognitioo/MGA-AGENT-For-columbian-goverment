@@ -688,6 +688,14 @@ def render_sidebar():
         role_emoji = "👑" if user_role == "admin" else "👤"
         st.markdown(f"**{role_emoji} Rol: {user_role.title()}**")
         
+        # DEBUG: Show loaded API Key prefix
+        from config import GROQ_API_KEY
+        if GROQ_API_KEY:
+            safe_key = GROQ_API_KEY[:10] + "..." if len(GROQ_API_KEY) > 10 else "Short/Invalid"
+            st.caption(f"🔑 Key Loaded: `{safe_key}`")
+        else:
+            st.error("🔑 No API Key Found!")
+        
         # Show rate limit for users
         can_generate, limit = check_rate_limit()
         used = st.session_state.get('generation_count_today', 0)
