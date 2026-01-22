@@ -16,16 +16,27 @@ def get_secret(key: str, default: str = "") -> str:
     Get secret from Streamlit secrets (Cloud) or environment variable (local).
     Priority: st.secrets > os.environ > default
     """
+    value = default
+    
     # Try Streamlit secrets first (for Cloud deployment)
     try:
         import streamlit as st
+        # Check standard top-level secrets
         if hasattr(st, 'secrets') and key in st.secrets:
-            return st.secrets[key]
+            value = st.secrets[key]
+        # Check nested sections (e.g. st.secrets["connections"]["key"])? No, simple flat structure usually.
     except:
         pass
     
-    # Fall back to environment variable
-    return os.getenv(key, default)
+    # Fall back to environment variable if not found in secrets
+    if value == default:
+        value = os.getenv(key, default)
+    
+    # Sanitize value (remove quotes/spaces potentially added by TOML formatting)
+    if value and isinstance(value, str):
+        return value.strip().strip('"').strip("'")
+    
+    return value
 
 # --- LLM Configuration ---
 # Default to Groq for fast and free inference
