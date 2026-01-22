@@ -42,7 +42,7 @@ LLM_PROVIDERS = {
     },
     "gemini": {
         "name": "Google Gemini",
-        "model": "gemini-2.5-pro",
+        "model": "gemini-2.0-flash",
         "env_key": "GOOGLE_API_KEY",
     },
     "gemini_flash": {

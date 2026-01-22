@@ -47,6 +47,7 @@ class MGASubsidiosBuilder:
     def build(self, data: dict, ai_content: dict, letterhead_file=None) -> str:
         """Build the MGA Subsidios document"""
         self._has_letterhead = letterhead_file is not None
+        self._data = data  # Store data for access in page methods
         
         if letterhead_file:
             self.doc = self._load_template(letterhead_file)
@@ -55,8 +56,24 @@ class MGASubsidiosBuilder:
         
         self._apply_styles()
         
-        # Page 1 - Datos Básicos
-        self._add_page_1_datos_basicos(ai_content.get("pagina_1_datos_basicos", {}))
+        # Page 1 - Datos Básicos (ROBUST DATA MAPPING)
+        page1_content = ai_content.get("pagina_1_datos_basicos", {})
+        
+        # Merge with form data to ensure no empty fields
+        # If AI returns empty/missing, use the form data directly
+        page1_content["nombre"] = page1_content.get("nombre") or data.get("nombre_proyecto") or ""
+        page1_content["nombre_proyecto"] = data.get("nombre_proyecto") or ""
+        page1_content["codigo_bpin"] = page1_content.get("codigo_bpin") or data.get("bpin") or ""
+        page1_content["identificador"] = page1_content.get("identificador") or data.get("identificador") or ""
+        page1_content["formulador_ciudadano"] = page1_content.get("formulador_ciudadano") or data.get("responsable") or ""
+        page1_content["formulador_oficial"] = page1_content.get("formulador_oficial") or data.get("responsable") or ""
+        page1_content["fecha_creacion"] = page1_content.get("fecha_creacion") or data.get("fecha_creacion") or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        
+        # Sector is tricky, try to get from data if available, or keep AI's
+        if not page1_content.get("sector") and data.get("sector"):
+             page1_content["sector"] = data.get("sector")
+             
+        self._add_page_1_datos_basicos(page1_content)
         
         self.doc.add_page_break()
         
@@ -95,8 +112,18 @@ class MGASubsidiosBuilder:
         
         self.doc.add_page_break()
         
-        # Pages 22-24
-        self._add_pages_22_24(ai_content)
+        # Pages 22+ (Dynamic Indicators)
+        self._add_pages_indicadores(ai_content)
+        
+        self.doc.add_page_break()
+        
+        # Pages 23+ (Dynamic Regionalization)
+        self._add_pages_regionalizacion(ai_content)
+        
+        self.doc.add_page_break()
+        
+        # Page 24 - Focalización
+        self._add_page_focalizacion(ai_content)
         
         # Save and return
         return self._save_document(data)
@@ -112,18 +139,111 @@ class MGASubsidiosBuilder:
             return Document()
     
     def _apply_styles(self):
-        """Apply document styles"""
+        """Apply document styles and add page numbers in footer"""
         for section in self.doc.sections:
             if not self._has_letterhead:
                 section.page_width = Inches(8.5)
                 section.page_height = Inches(11)
                 section.left_margin = Cm(2)
                 section.right_margin = Cm(2)
-                section.top_margin = Cm(2)
+                section.top_margin = Cm(2.5)  # More space for header
                 section.bottom_margin = Cm(2)
+            
+            # Add page numbers in footer (bottom left) - "Página X"
+            footer = section.footer
+            footer.is_linked_to_previous = False
+            
+            # Clear existing footer paragraphs
+            for p in footer.paragraphs:
+                p.clear()
+            
+            # Add page number paragraph
+            if footer.paragraphs:
+                p = footer.paragraphs[0]
+            else:
+                p = footer.add_paragraph()
+            
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            
+            # Add "Página " text
+            run_text = p.add_run("Página ")
+            run_text.font.size = Pt(9)
+            run_text.font.color.rgb = RGBColor(128, 128, 128)
+            
+            # Add page number field with proper structure
+            run = p.add_run()
+            fld_char_begin = OxmlElement('w:fldChar')
+            fld_char_begin.set(qn('w:fldCharType'), 'begin')
+            run._r.append(fld_char_begin)
+            
+            run2 = p.add_run()
+            instr = OxmlElement('w:instrText')
+            instr.set(qn('xml:space'), 'preserve')
+            instr.text = ' PAGE '
+            run2._r.append(instr)
+            
+            run3 = p.add_run()
+            fld_char_separate = OxmlElement('w:fldChar')
+            fld_char_separate.set(qn('w:fldCharType'), 'separate')
+            run3._r.append(fld_char_separate)
+            
+            run4 = p.add_run("1")  # Placeholder that will be replaced
+            run4.font.size = Pt(9)
+            run4.font.color.rgb = RGBColor(128, 128, 128)
+            
+            run5 = p.add_run()
+            fld_char_end = OxmlElement('w:fldChar')
+            fld_char_end.set(qn('w:fldCharType'), 'end')
+            run5._r.append(fld_char_end)
+    
+    def _add_document_letterhead(self, nombre_proyecto: str = ""):
+        """
+        Add configurable document letterhead/header.
+        If user has provided a letterhead template, this is skipped.
+        Otherwise, creates a basic header with project title and date.
+        """
+        if self._has_letterhead:
+            # User provided letterhead template - skip adding our own
+            return
+        
+        # Create header table: [Logo placeholder | Project Title | Date]
+        header_table = self.doc.add_table(rows=1, cols=3)
+        header_table.autofit = True
+        
+        # Left cell - Logo placeholder (Departamento Nacional de Planeación)
+        cell_logo = header_table.rows[0].cells[0]
+        p_logo = cell_logo.paragraphs[0]
+        run_logo = p_logo.add_run("Departamento\nNacional de Planeación")
+        run_logo.font.size = Pt(8)
+        run_logo.font.color.rgb = RGBColor(0, 100, 0)  # Dark green
+        run_logo.bold = True
+        
+        # Center cell - Project title (Blue text, no background)
+        cell_title = header_table.rows[0].cells[1]
+        p_title = cell_title.paragraphs[0]
+        p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if nombre_proyecto:
+            run_title = p_title.add_run(nombre_proyecto)
+            run_title.font.size = Pt(8)
+            run_title.font.color.rgb = RGBColor(0, 112, 192)  # Client Blue
+            # run_title.bold = True
+        
+        # Right cell - Date
+        cell_date = header_table.rows[0].cells[2]
+        p_date = cell_date.paragraphs[0]
+        p_date.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        now = datetime.now()
+        # Format: Impreso el DD/MM/YYYY HH:MM:SS p.m.
+        date_str = f"Impreso el {now.strftime('%d/%m/%Y %I:%M:%S %p').lower()}"
+        run_date = p_date.add_run(date_str)
+        run_date.font.size = Pt(7)
+        run_date.font.color.rgb = RGBColor(100, 100, 100)
+        
+        # Add spacing after header
+        self.doc.add_paragraph()
     
     def _add_header(self, section_name: str, subsection: str = ""):
-        """Add standard MGA header"""
+        """Add standard MGA section header (right-aligned section indicator)"""
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         
@@ -161,53 +281,140 @@ class MGASubsidiosBuilder:
         p.paragraph_format.space_before = Pt(12)
         p.paragraph_format.space_after = Pt(6)
     
+    
     def _add_field(self, label: str, value: str):
-        """Add a label-value field"""
+        """Add a label-value field (label on top, value in gray box)"""
+        # Label
         p = self.doc.add_paragraph()
         run_label = p.add_run(label)
         run_label.font.size = Pt(10)
-        run_label.font.color.rgb = RGBColor(0, 128, 128)
-        run_value = p.add_run(f"\n{value}")
-        run_value.font.size = Pt(10)
+        run_label.font.color.rgb = RGBColor(112, 173, 71)  # Client Green (roughly)
+        run_label.bold = True
+        p.paragraph_format.space_after = Pt(2)
+        
+        # Value in gray box (Table 1x1)
+        table = self.doc.add_table(rows=1, cols=1)
+        table.autofit = True
+        cell = table.rows[0].cells[0]
+        self._set_cell_shading(cell, "F2F2F2")  # Light Gray
+        
+        p_val = cell.paragraphs[0]
+        p_val.paragraph_format.space_before = Pt(0)
+        p_val.paragraph_format.space_after = Pt(0)
+        p_val.paragraph_format.line_spacing = 1.0
+        # Reduce cell margins
+        tcPr = cell._tc.get_or_add_tcPr()
+        tcMar = OxmlElement('w:tcMar')
+        for side in ['top', 'bottom']:
+            node = OxmlElement(f'w:{side}')
+            node.set(qn('w:w'), '0') # Slimmer box (0 margins)
+            node.set(qn('w:type'), 'dxa')
+            tcMar.append(node)
+        tcPr.append(tcMar)
+        
+        run_val = p_val.add_run(value)
+        run_val.font.size = Pt(10)
+        
+        # Add spacing after field
+        self.doc.add_paragraph().paragraph_format.space_after = Pt(4)
+    
+    def _add_inline_field(self, label: str, value: str):
+        """Add a label-value field inline (Label | Value in gray box)"""
+        table = self.doc.add_table(rows=1, cols=2)
+        table.autofit = True
+        
+        # Cell 1: Label
+        cell_label = table.rows[0].cells[0]
+        p_label = cell_label.paragraphs[0]
+        run_label = p_label.add_run(label)
+        run_label.font.size = Pt(10)
+        run_label.font.color.rgb = RGBColor(112, 173, 71)  # Client Green
+        run_label.bold = True
+        
+        # Cell 2: Value in Gray Box
+        cell_val = table.rows[0].cells[1]
+        self._set_cell_shading(cell_val, "F2F2F2")  # Light Gray
+        p_val = cell_val.paragraphs[0]
+        p_val.paragraph_format.space_before = Pt(0)
+        p_val.paragraph_format.space_after = Pt(0)
+        p_val.paragraph_format.line_spacing = 1.0
+        
+        # Reduce margins
+        tcPr = cell_val._tc.get_or_add_tcPr()
+        tcMar = OxmlElement('w:tcMar')
+        for side in ['top', 'bottom']:
+            node = OxmlElement(f'w:{side}')
+            node.set(qn('w:w'), '0') # Slimmer box (0 margins)
+            node.set(qn('w:type'), 'dxa')
+            tcMar.append(node)
+        tcPr.append(tcMar)
+
+        run_val = p_val.add_run(value)
+        run_val.font.size = Pt(10)
+        
+        # Adjust column widths if possible, or just let autofit handle it
+        # Docx tables are tricky with exact widths, autofit usually works for this layout
+        
+        # Add spacing
+        self.doc.add_paragraph().paragraph_format.space_after = Pt(4)
     
     def _add_page_1_datos_basicos(self, content: dict):
         """Add Page 1 - Datos Básicos with proper table structure matching client template"""
+        # Add letterhead/header first (if not using custom template)
+        nombre_proyecto = content.get("nombre_proyecto", "") or content.get("nombre", "")
+        self._add_document_letterhead(nombre_proyecto)
+        
+        # Section indicator (right-aligned)
         self._add_header("Datos básicos")
         
-        # Title bar (project name in small text at top)
-        p_title = self.doc.add_paragraph()
-        run = p_title.add_run(content.get("titulo_documento", ""))
-        run.font.size = Pt(8)
-        run.font.color.rgb = RGBColor(100, 100, 100)
-        
+        # Main section title (centered, underlined)
         self._add_section_title("Datos básicos")
         self._add_subsection_title("01 - Datos básicos del proyecto")
         
         # Nombre field
         self._add_field("Nombre", content.get("nombre", ""))
         
-        # Add horizontal separator (thin line)
-        self._add_horizontal_line()
+        # Add some spacing
+        self.doc.add_paragraph()
         
         # TWO-COLUMN TABLE: Tipología | Código BPIN
         table_tipo_bpin = self.doc.add_table(rows=2, cols=2)
         table_tipo_bpin.autofit = True
         
-        # Row 0: Labels
+        # Row 0: Labels (Green)
         cell_tipo_label = table_tipo_bpin.rows[0].cells[0]
         cell_bpin_label = table_tipo_bpin.rows[0].cells[1]
         
         run_tipo = cell_tipo_label.paragraphs[0].add_run("Tipología")
         run_tipo.font.size = Pt(10)
-        run_tipo.font.color.rgb = RGBColor(0, 128, 128)
+        run_tipo.font.color.rgb = RGBColor(112, 173, 71)  # Client Green
+        run_tipo.bold = True
         
         run_bpin = cell_bpin_label.paragraphs[0].add_run("Código BPIN")
         run_bpin.font.size = Pt(10)
-        run_bpin.font.color.rgb = RGBColor(0, 128, 128)
+        run_bpin.font.color.rgb = RGBColor(112, 173, 71)  # Client Green
+        run_bpin.bold = True
         
-        # Row 1: Values
+        # Row 1: Values (Gray Box)
         cell_tipo_val = table_tipo_bpin.rows[1].cells[0]
         cell_bpin_val = table_tipo_bpin.rows[1].cells[1]
+        
+        self._set_cell_shading(cell_tipo_val, "F2F2F2")
+        self._set_cell_shading(cell_bpin_val, "F2F2F2")
+        
+        # Make slimmer
+        for cell in [cell_tipo_val, cell_bpin_val]:
+            cell.paragraphs[0].paragraph_format.space_before = Pt(0)
+            cell.paragraphs[0].paragraph_format.space_after = Pt(0)
+            cell.paragraphs[0].paragraph_format.line_spacing = 1.0
+            tcPr = cell._tc.get_or_add_tcPr()
+            tcMar = OxmlElement('w:tcMar')
+            for side in ['top', 'bottom']:
+                node = OxmlElement(f'w:{side}')
+                node.set(qn('w:w'), '0')
+                node.set(qn('w:type'), 'dxa')
+                tcMar.append(node)
+            tcPr.append(tcMar)
         
         tipo_text = cell_tipo_val.paragraphs[0].add_run(content.get("tipologia", "A - PIIP - Bienes y Servicios"))
         tipo_text.font.size = Pt(10)
@@ -215,44 +422,62 @@ class MGASubsidiosBuilder:
         bpin_text = cell_bpin_val.paragraphs[0].add_run(content.get("codigo_bpin", ""))
         bpin_text.font.size = Pt(10)
         
-        self._add_horizontal_line()
+        # Add some spacing
+        self.doc.add_paragraph()
         
         # Sector field
         self._add_field("Sector", content.get("sector", ""))
         
-        self._add_horizontal_line()
+        # Add some spacing
+        self.doc.add_paragraph()
         
-        # TWO-COLUMN: Es Proyecto Tipo | Fecha creación
-        table_tipo_fecha = self.doc.add_table(rows=1, cols=2)
+        # TWO-COLUMN: Es Proyecto Tipo | Fecha creación works differently in client screenshot
+        # Client screenshot: "Es Proyecto Tipo: [No]" (Gray box) ... "Fecha creación: [Date]" (Gray box)
+        # Let's use a 1-row table with 4 cells: Label | Value | Label | Value
+        
+        table_tipo_fecha = self.doc.add_table(rows=1, cols=4)
         table_tipo_fecha.autofit = True
         
-        cell_es_tipo = table_tipo_fecha.rows[0].cells[0]
-        cell_fecha = table_tipo_fecha.rows[0].cells[1]
+        # Cell 0: Label "Es Proyecto Tipo"
+        run_es = table_tipo_fecha.rows[0].cells[0].paragraphs[0].add_run("Es Proyecto Tipo:")
+        run_es.font.size = Pt(10)
+        run_es.font.color.rgb = RGBColor(112, 173, 71)
+        run_es.bold = True
         
-        p_es = cell_es_tipo.paragraphs[0]
-        run_es_label = p_es.add_run("Es Proyecto Tipo: ")
-        run_es_label.font.size = Pt(10)
-        run_es_label.font.color.rgb = RGBColor(0, 128, 128)
-        run_es_val = p_es.add_run(content.get("es_proyecto_tipo", "No"))
+        # Cell 1: Value "No" (Gray Box)
+        cell_es_val = table_tipo_fecha.rows[0].cells[1]
+        self._set_cell_shading(cell_es_val, "F2F2F2")
+        cell_es_val.paragraphs[0].paragraph_format.space_before = Pt(0)
+        cell_es_val.paragraphs[0].paragraph_format.space_after = Pt(0)
+        run_es_val = cell_es_val.paragraphs[0].add_run(content.get("es_proyecto_tipo", "No"))
         run_es_val.font.size = Pt(10)
         
-        p_fecha = cell_fecha.paragraphs[0]
-        run_fecha_label = p_fecha.add_run("Fecha creación: ")
-        run_fecha_label.font.size = Pt(10)
-        run_fecha_label.font.color.rgb = RGBColor(0, 128, 128)
-        run_fecha_val = p_fecha.add_run(content.get("fecha_creacion", datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
-        run_fecha_val.font.size = Pt(10)
+        # Cell 2: Label "Fecha creación"
+        run_fe = table_tipo_fecha.rows[0].cells[2].paragraphs[0].add_run("Fecha creación:")
+        run_fe.font.size = Pt(10)
+        run_fe.font.color.rgb = RGBColor(112, 173, 71)
+        run_fe.bold = True
+        table_tipo_fecha.rows[0].cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
         
-        self._add_horizontal_line()
+        # Cell 3: Value Date (Gray Box)
+        cell_fe_val = table_tipo_fecha.rows[0].cells[3]
+        self._set_cell_shading(cell_fe_val, "F2F2F2")
+        cell_fe_val.paragraphs[0].paragraph_format.space_before = Pt(0)
+        cell_fe_val.paragraphs[0].paragraph_format.space_after = Pt(0)
+        run_fe_val = cell_fe_val.paragraphs[0].add_run(content.get("fecha_creacion", datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        run_fe_val.font.size = Pt(10)
         
-        # Identificador
-        self._add_field("Identificador:", content.get("identificador", ""))
+        # Add some spacing
+        self.doc.add_paragraph()
         
-        # TWO-COLUMN: Formulador Ciudadano | Value
-        self._add_field("Formulador Ciudadano:", content.get("formulador_ciudadano", ""))
+        # Identificador - inline layout
+        self._add_inline_field("Identificador:", content.get("identificador", ""))
         
-        # TWO-COLUMN: Formulador Oficial | Value  
-        self._add_field("Formulador Oficial:", content.get("formulador_oficial", ""))
+        # Formulador Ciudadano - inline layout
+        self._add_inline_field("Formulador Ciudadano:", content.get("formulador_ciudadano", ""))
+        
+        # Formulador Oficial - inline layout
+        self._add_inline_field("Formulador Oficial:", content.get("formulador_oficial", ""))
     
     def _add_horizontal_line(self):
         """Add a thin horizontal separator line"""
@@ -457,8 +682,17 @@ class MGASubsidiosBuilder:
         
         pob_afectada = content.get("poblacion_afectada", {})
         self._add_field("Tipo de población", pob_afectada.get("tipo", "Personas"))
-        self._add_field("Número", pob_afectada.get("numero", ""))
+        self._add_field("Número", str(pob_afectada.get("numero", "")))
         self._add_field("Fuente de la información", pob_afectada.get("fuente", ""))
+        
+        # Extract location data (handle both nested and flat structure)
+        # Fallback to self._data (form input) if AI doesn't provide location
+        loc_afectada = pob_afectada.get("localizacion", {})
+        region_afectada = loc_afectada.get("region", "") or pob_afectada.get("region", "") or "Caribe"
+        dept_afectada = loc_afectada.get("departamento", "") or pob_afectada.get("departamento", "") or self._data.get("departamento", "")
+        mun_afectada = loc_afectada.get("municipio", "") or pob_afectada.get("municipio", "") or self._data.get("municipio", "")
+        tipo_agrup_afectada = loc_afectada.get("tipo_agrupacion", "") or pob_afectada.get("tipo_agrupacion", "") or "Urbana"
+        agrup_afectada = loc_afectada.get("agrupacion", "") or pob_afectada.get("agrupacion", "") or self._data.get("municipio", "")
         
         # Localización table
         self._add_subsection_title("Localización")
@@ -473,10 +707,10 @@ class MGASubsidiosBuilder:
             for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
         
-        table.rows[1].cells[0].text = f"Región: {pob_afectada.get('region', 'Caribe')}"
-        table.rows[2].cells[0].text = f"Departamento: {pob_afectada.get('departamento', '')}"
-        table.rows[3].cells[0].text = f"Municipio: {pob_afectada.get('municipio', '')}"
-        table.rows[4].cells[0].text = "Tipo de Agrupación:\nAgrupación:"
+        table.rows[1].cells[0].text = f"Región: {region_afectada}"
+        table.rows[2].cells[0].text = f"Departamento: {dept_afectada}"
+        table.rows[3].cells[0].text = f"Municipio: {mun_afectada}"
+        table.rows[4].cells[0].text = f"Tipo de Agrupación: {tipo_agrup_afectada}\nAgrupación: {agrup_afectada}"
         
         self.doc.add_paragraph()
         
@@ -485,8 +719,17 @@ class MGASubsidiosBuilder:
         
         pob_objetivo = content.get("poblacion_objetivo", {})
         self._add_field("Tipo de población", pob_objetivo.get("tipo", "Personas"))
-        self._add_field("Número", pob_objetivo.get("numero", ""))
+        self._add_field("Número", str(pob_objetivo.get("numero", "")))
         self._add_field("Fuente de la información", pob_objetivo.get("fuente", ""))
+        
+        # Extract location data (handle both nested and flat structure)
+        # Fallback to self._data (form input) if AI doesn't provide location
+        loc_objetivo = pob_objetivo.get("localizacion", {})
+        region_objetivo = loc_objetivo.get("region", "") or pob_objetivo.get("region", "") or "Caribe"
+        dept_objetivo = loc_objetivo.get("departamento", "") or pob_objetivo.get("departamento", "") or self._data.get("departamento", "")
+        mun_objetivo = loc_objetivo.get("municipio", "") or pob_objetivo.get("municipio", "") or self._data.get("municipio", "")
+        tipo_agrup_objetivo = loc_objetivo.get("tipo_agrupacion", "") or pob_objetivo.get("tipo_agrupacion", "") or "Urbana"
+        agrup_objetivo = loc_objetivo.get("agrupacion", "") or pob_objetivo.get("agrupacion", "") or self._data.get("municipio", "")
         
         # Localización table for objetivo
         self._add_subsection_title("Localización")
@@ -501,10 +744,10 @@ class MGASubsidiosBuilder:
             for run in table2.rows[0].cells[i].paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
         
-        table2.rows[1].cells[0].text = f"Región: {pob_objetivo.get('region', 'Caribe')}"
-        table2.rows[2].cells[0].text = f"Departamento: {pob_objetivo.get('departamento', '')}"
-        table2.rows[3].cells[0].text = f"Municipio: {pob_objetivo.get('municipio', '')}"
-        table2.rows[4].cells[0].text = "Tipo de Agrupación:\nAgrupación:"
+        table2.rows[1].cells[0].text = f"Región: {region_objetivo}"
+        table2.rows[2].cells[0].text = f"Departamento: {dept_objetivo}"
+        table2.rows[3].cells[0].text = f"Municipio: {mun_objetivo}"
+        table2.rows[4].cells[0].text = f"Tipo de Agrupación: {tipo_agrup_objetivo}\nAgrupación: {agrup_objetivo}"
     
     def _add_page_7_objetivos(self, content: dict):
         """Add Page 7 - Objetivos"""
@@ -601,10 +844,12 @@ class MGASubsidiosBuilder:
     
     def _add_estudio_necesidades_servicio(self, servicio_data: dict, servicio_nombre: str):
         """Add estudio de necesidades for a service"""
-        self._add_header("Identificación", "Objetivos")
+        self._add_header("Identificación", "Alternativas")
         
+        # Use dynamic project name instead of hardcoded subsidios text
+        nombre_proyecto = self._data.get("nombre_proyecto", "")
         p = self.doc.add_paragraph()
-        run = p.add_run(f"Alternativa 1. Transferir los recursos de subsidios para los servicios públicos domiciliarios de Acueducto, Alcantarillado y Aseo a la EMACALA S.A.S E.S.P")
+        run = p.add_run(f"Alternativa 1. {nombre_proyecto}")
         run.bold = True
         run.font.size = Pt(10)
         
@@ -622,20 +867,36 @@ class MGASubsidiosBuilder:
         if tabla_od:
             table = self.doc.add_table(rows=1, cols=4)
             table.style = 'Table Grid'
+            table.autofit = False
+            
+            # Set column widths for better display
+            col_widths = [Inches(1.2), Inches(1.5), Inches(1.5), Inches(1.5)]
+            for i, width in enumerate(col_widths):
+                for cell in table.columns[i].cells:
+                    cell.width = width
             
             headers = ["Año", "Oferta", "Demanda", "Déficit"]
             for i, h in enumerate(headers):
-                table.rows[0].cells[i].text = h
-                self._set_cell_shading(table.rows[0].cells[i], "0099CC")
-                for run in table.rows[0].cells[i].paragraphs[0].runs:
+                cell = table.rows[0].cells[i]
+                cell.text = h
+                cell.width = col_widths[i]
+                self._set_cell_shading(cell, "0099CC")
+                for run in cell.paragraphs[0].runs:
                     run.font.color.rgb = RGBColor(255, 255, 255)
+                    run.font.bold = True
+                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
             
-            for item in tabla_od:
+            for idx, item in enumerate(tabla_od):
                 row = table.add_row()
                 row.cells[0].text = str(item.get("ano", ""))
                 row.cells[1].text = str(item.get("oferta", ""))
                 row.cells[2].text = str(item.get("demanda", ""))
                 row.cells[3].text = str(item.get("deficit", ""))
+                
+                # Alternating row colors (light blue for odd rows, white for even)
+                if idx % 2 == 0:
+                    for cell in row.cells:
+                        self._set_cell_shading(cell, "E8F4F8")  # Light blue
                 
                 for cell in row.cells:
                     for para in cell.paragraphs:
@@ -656,102 +917,70 @@ class MGASubsidiosBuilder:
         # Pages 8-11 - Estudio de Necesidades
         estudio = content.get("pagina_8_9_10_11_estudio_necesidades", {})
         
-        # Aseo
-        self._add_estudio_necesidades_servicio(estudio.get("aseo", {}), "Aseo")
-        
-        self.doc.add_page_break()
-        
-        # Alcantarillado
-        self._add_estudio_necesidades_servicio(estudio.get("alcantarillado", {}), "Alcantarillado")
-        
-        self.doc.add_page_break()
-        
-        # Acueducto
-        self._add_estudio_necesidades_servicio(estudio.get("acueducto", {}), "Acueducto")
+        # Use servicio_principal (main service) - this matches the prompt output
+        servicio_principal = estudio.get("servicio_principal", {})
+        if servicio_principal:
+            self._add_estudio_necesidades_servicio(servicio_principal, "Principal")
     
     def _add_page_12_analisis_tecnico(self, content: dict):
         """Add Page 12 - Análisis Técnico"""
         self._add_header("Preparación", "Análisis técnico")
         
+        # Use dynamic project name
+        nombre_proyecto = self._data.get("nombre_proyecto", "")
         p = self.doc.add_paragraph()
-        run = p.add_run("Alternativa: Transferir los recursos de subsidios para los servicios públicos domiciliarios de Acueducto, Alcantarillado y Aseo a la EMACALA S.A.S E.S.P")
+        run = p.add_run(f"Alternativa: {nombre_proyecto}")
         run.font.size = Pt(9)
         run.font.color.rgb = RGBColor(100, 100, 100)
         
         self._add_section_title("Análisis técnico de la alternativa")
         self._add_subsection_title("01 - Análisis técnico de la alternativa")
         
-        self._add_subsection_title("Análisis técnico de la alternativa")
+        # Green label for subsection
         p = self.doc.add_paragraph()
-        p.add_run(content.get("descripcion_alternativa", ""))
+        run = p.add_run("Análisis técnico de la alternativa")
+        run.font.color.rgb = RGBColor(0, 128, 0)
+        run.font.size = Pt(11)
         
-        self.doc.add_paragraph()
+        # Main description
         p = self.doc.add_paragraph()
-        p.add_run(content.get("descripcion_subsidios", ""))
+        p.add_run("La alternativa corresponde:")
         
-        # Datos de línea base
-        datos = content.get("datos_linea_base", {})
-        self.doc.add_paragraph()
-        p = self.doc.add_paragraph()
-        p.add_run(f"Con corte a {datos.get('fecha_corte', 'diciembre de 2025')}, se presentan los siguientes datos de linea base:")
+        # Get the technical analysis content from AI
+        descripcion = content.get("analisis_tecnico", "")
+        if descripcion:
+            p = self.doc.add_paragraph()
+            p.add_run(descripcion)
         
-        # Acueducto
-        p = self.doc.add_paragraph()
-        run = p.add_run("Servicio de Acueducto")
-        run.bold = True
-        
-        acueducto = datos.get("acueducto", {})
-        e1 = acueducto.get("estrato_1", {})
-        e2 = acueducto.get("estrato_2", {})
-        p = self.doc.add_paragraph()
-        p.add_run(f"  Estrato 1: {e1.get('usuarios', '')} usuarios — Tarifa plena: {e1.get('tarifa_plena', '')} — Subsidio: {e1.get('subsidio', '')}")
-        p = self.doc.add_paragraph()
-        p.add_run(f"  Estrato 2: {e2.get('usuarios', '')} usuarios — Tarifa plena: {e2.get('tarifa_plena', '')} — Subsidio: {e2.get('subsidio', '')}")
-        
-        # Alcantarillado
-        p = self.doc.add_paragraph()
-        run = p.add_run("Servicio de Alcantarillado")
-        run.bold = True
-        
-        alcant = datos.get("alcantarillado", {})
-        e1 = alcant.get("estrato_1", {})
-        e2 = alcant.get("estrato_2", {})
-        p = self.doc.add_paragraph()
-        p.add_run(f"  Estrato 1: {e1.get('usuarios', '')} usuarios — Tarifa plena: {e1.get('tarifa_plena', '')} — Subsidio: {e1.get('subsidio', '')}")
-        p = self.doc.add_paragraph()
-        p.add_run(f"  Estrato 2: {e2.get('usuarios', '')} usuarios — Tarifa plena: {e2.get('tarifa_plena', '')} — Subsidio: {e2.get('subsidio', '')}")
-        
-        # Aseo
-        p = self.doc.add_paragraph()
-        run = p.add_run("Servicio de Aseo")
-        run.bold = True
-        
-        aseo = datos.get("aseo", {})
-        e1 = aseo.get("estrato_1", {})
-        e2 = aseo.get("estrato_2", {})
-        p = self.doc.add_paragraph()
-        p.add_run(f"  Estrato 1: {e1.get('usuarios', '')} usuarios — Tarifa plena: {e1.get('tarifa_plena', '')} — Subsidio: {e1.get('subsidio', '')}")
-        p = self.doc.add_paragraph()
-        p.add_run(f"  Estrato 2: {e2.get('usuarios', '')} usuarios — Tarifa plena: {e2.get('tarifa_plena', '')} — Subsidio: {e2.get('subsidio', '')}")
-        
-        self.doc.add_paragraph()
-        p = self.doc.add_paragraph()
-        p.add_run(content.get("implementacion", ""))
-        
-        self.doc.add_paragraph()
-        p = self.doc.add_paragraph()
-        p.add_run(content.get("beneficio", ""))
+        # Functions list (if provided by AI)
+        funciones = content.get("funciones", [])
+        if funciones:
+            for funcion in funciones:
+                p = self.doc.add_paragraph()
+                p.add_run(f"- {funcion}")
     
     def _add_page_13_localizacion(self, content: dict):
         """Add Page 13 - Localización"""
         self._add_header("Preparación", "Localización")
+        
+        # Add Alternativa line with dynamic project name
+        nombre_proyecto = self._data.get("nombre_proyecto", "")
+        p = self.doc.add_paragraph()
+        run = p.add_run(f"Alternativa: {nombre_proyecto}")
+        run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(100, 100, 100)
         
         self._add_section_title("Localización de la alternativa")
         self._add_subsection_title("01 - Localización de la alternativa")
         
         ubicacion = content.get("ubicacion", {})
         
-        table = self.doc.add_table(rows=7, cols=2)
+        # Fallback to self._data for location values
+        region = ubicacion.get('region', '') or self._data.get('region', 'Caribe')
+        departamento = ubicacion.get('departamento', '') or self._data.get('departamento', '')
+        municipio = ubicacion.get('municipio', '') or self._data.get('municipio', '')
+        
+        table = self.doc.add_table(rows=8, cols=2)
         table.style = 'Table Grid'
         
         table.rows[0].cells[0].text = "Ubicación general"
@@ -761,88 +990,154 @@ class MGASubsidiosBuilder:
             for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
         
-        # Fill general location (column 0)
-        table.rows[1].cells[0].text = f"Región: {self._safe_str(ubicacion.get('region', 'N/A'))}"
-        table.rows[2].cells[0].text = f"Departamento: {self._safe_str(ubicacion.get('departamento', 'N/A'))}"
-        table.rows[3].cells[0].text = f"Municipio: {self._safe_str(ubicacion.get('municipio', 'N/A'))}"
-        table.rows[4].cells[0].text = f"Tipo de Agrupación: {self._safe_str(ubicacion.get('tipo_agrupacion', 'Urbana'))}"
-        table.rows[5].cells[0].text = f"Latitud: {self._safe_str(ubicacion.get('latitud', 'N/A'))}"
-        table.rows[6].cells[0].text = f"Longitud: {self._safe_str(ubicacion.get('longitud', 'N/A'))}"
-        
-        # Fill specific location (column 1) - use N/A if not provided
-        ubicacion_especifica = ubicacion.get("ubicacion_especifica", {})
-        table.rows[1].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_region', 'N/A'))
-        table.rows[2].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_departamento', 'N/A'))
-        table.rows[3].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_municipio', 'N/A'))
-        table.rows[4].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_tipo', 'N/A'))
-        table.rows[5].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_latitud', 'N/A'))
-        table.rows[6].cells[1].text = self._safe_str(ubicacion_especifica.get('detalle_longitud', 'N/A'))
+        # Fill general location (column 0) with fallback to input data
+        table.rows[1].cells[0].text = f"Región: {region}"
+        table.rows[2].cells[0].text = f"Departamento: {departamento}"
+        table.rows[3].cells[0].text = f"Municipio: {municipio}"
+        table.rows[4].cells[0].text = f"Tipo de Agrupación:"
+        table.rows[5].cells[0].text = f"Agrupación:"
+        table.rows[6].cells[0].text = f"Latitud:"
+        table.rows[7].cells[0].text = f"Longitud:"
         
         self.doc.add_paragraph()
         
         # Factores analizados
         self._add_subsection_title("02 - Factores analizados")
         
+        # Default factors if not provided by AI
         factores = content.get("factores_analizados", [])
-        for factor in factores:
-            p = self.doc.add_paragraph()
-            p.add_run(factor + ",")
+        if not factores:
+            factores = [
+                "Cercanía a la población objetivo",
+                "Cercanía de fuentes de abastecimiento",
+                "Disponibilidad y costo de mano de obra",
+                "Factores ambientales",
+                "Otros"
+            ]
+        
+        # Display factors as simple list
+        p = self.doc.add_paragraph()
+        p.add_run(",\n".join(factores))
     
     def _add_page_14_cadena_valor(self, content: dict):
         """Add Page 14 - Cadena de Valor"""
         self._add_header("Preparación", "Cadena de valor")
         
+        # Add Alternativa line with dynamic project name
+        nombre_proyecto = self._data.get("nombre_proyecto", "")
+        p = self.doc.add_paragraph()
+        run = p.add_run(f"Alternativa: {nombre_proyecto}")
+        run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(100, 100, 100)
+        
         self._add_section_title("Cadena de valor de la alternativa")
         
+        # Costo total aligned right
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        run = p.add_run(f"Costo total de la alternativa: $ {content.get('costo_total', '')}")
+        costo_total = content.get('costo_total', '') or self._data.get('valor_total', '')
+        run = p.add_run(f"Costo total de la alternativa: $ {costo_total}")
         run.bold = True
         
-        obj = content.get("objetivo_especifico", {})
-        self._add_subsection_title(f"{obj.get('numero', '1')} - Objetivo específico {obj.get('numero', '1')}   Costo: $ {obj.get('costo', '')}")
+        # Support multiple objectives OR top-level productos
+        objetivos = content.get("objetivos", [])
         
-        p = self.doc.add_paragraph()
-        p.add_run(obj.get("descripcion", ""))
+        # Check if prompt generated productos at top level (not under objetivos)
+        top_level_productos = content.get("productos", [])
+        top_level_actividades = content.get("actividades", [])
         
-        self.doc.add_paragraph()
+        if not objetivos and (top_level_productos or content.get("objetivo_general")):
+            # Create synthetic objetivo from top-level data
+            objetivos = [{
+                "numero": "1",
+                "descripcion": content.get("objetivo_general", nombre_proyecto),
+                "costo": costo_total,
+                "productos": top_level_productos
+            }]
+        elif not objetivos:
+            # Fallback to single objetivo_especifico format
+            obj = content.get("objetivo_especifico", {})
+            if obj:
+                objetivos = [obj]
         
-        # Producto y actividades table
-        table = self.doc.add_table(rows=1, cols=2)
-        table.style = 'Table Grid'
-        
-        table.rows[0].cells[0].text = "Producto"
-        table.rows[0].cells[1].text = "Actividad y/o Entregable"
-        for cell in table.rows[0].cells:
-            self._set_cell_shading(cell, "0099CC")
-            for run in cell.paragraphs[0].runs:
-                run.font.color.rgb = RGBColor(255, 255, 255)
-        
-        producto = content.get("producto", {})
-        row = table.add_row()
-        
-        # Left cell - producto
-        prod_text = f"{producto.get('codigo', '1.1')} {producto.get('nombre', '')}\n"
-        prod_text += f"{producto.get('complemento', '')}\n\n"
-        prod_text += f"Complemento:\n"
-        prod_text += f"Medido a través de: {producto.get('medido', '')}\n"
-        prod_text += f"Cantidad: {producto.get('cantidad', '')}\n"
-        prod_text += f"Costo: $ {producto.get('costo', '')}\n"
-        prod_text += f"Etapa: {producto.get('etapa', '')}\n"
-        prod_text += f"Localización:\n"
-        prod_text += f"Número de Personas: {producto.get('num_personas', '')}\n"
-        prod_text += f"Acumulativo o no: {producto.get('acumulativo', '')}\n"
-        prod_text += f"Población Beneficiaria: {producto.get('poblacion_beneficiaria', '')}"
-        row.cells[0].text = prod_text
-        
-        # Right cell - actividades
-        actividades = content.get("actividades", [])
-        act_text = ""
-        for act in actividades:
-            act_text += f"{act.get('codigo', '')} {act.get('descripcion', '')}\n\n"
-            act_text += f"Costo: $ {act.get('costo', '')}\n"
-            act_text += f"Etapa: {act.get('etapa', '')}\n\n"
-        row.cells[1].text = act_text
+        for obj in objetivos:
+            # Objetivo header
+            num = obj.get('numero', '1')
+            costo_obj = obj.get('costo', costo_total)
+            self._add_subsection_title(f"{num} - Objetivo específico {num}   Costo: $ {costo_obj}")
+            
+            p = self.doc.add_paragraph()
+            p.add_run(obj.get("descripcion", ""))
+            
+            self.doc.add_paragraph()
+            
+            # Products for this objective (try obj.productos, then top_level, then fallback)
+            productos = obj.get("productos", [])
+            if not productos:
+                productos = top_level_productos
+            if not productos:
+                # Fallback to single producto from content
+                single_prod = content.get("producto", {})
+                if single_prod:
+                    productos = [single_prod]
+            
+            # Create ONE table for all products in this objective
+            if productos:
+                table = self.doc.add_table(rows=1, cols=2)
+                table.style = 'Table Grid'
+                
+                # Header row
+                table.rows[0].cells[0].text = "Producto"
+                table.rows[0].cells[1].text = "Actividad y/o Entregable"
+                for cell in table.rows[0].cells:
+                    self._set_cell_shading(cell, "0099CC")
+                    for run in cell.paragraphs[0].runs:
+                        run.font.color.rgb = RGBColor(255, 255, 255)
+                        run.font.bold = True
+                
+                for idx, producto in enumerate(productos):
+                    row = table.add_row()
+                    
+                    # Add light blue shading to product cells for visual separation
+                    self._set_cell_shading(row.cells[0], "E8F4F8")
+                    self._set_cell_shading(row.cells[1], "FFFFFF")
+                    
+                    # Left cell - producto with all details (matching client format)
+                    codigo = producto.get('codigo', f'1.{idx+1}')
+                    nombre = producto.get('nombre', '')
+                    complemento = producto.get('complemento', '') or producto.get('complemento_info', '')
+                    
+                    prod_text = f"{codigo} {nombre}\n"
+                    if complemento:
+                        prod_text += f"    {complemento}  (Producto principal del proyecto)\n\n"
+                    else:
+                        prod_text += "\n"
+                    prod_text += f"Complemento:\n"
+                    prod_text += f"Medido a través de: {producto.get('medido', '') or producto.get('unidad', '')}\n"
+                    prod_text += f"Cantidad: {producto.get('cantidad', '')}\n"
+                    prod_text += f"Costo: $ {producto.get('costo', '')}\n"
+                    prod_text += f"Etapa: {producto.get('etapa', 'Inversión')}\n"
+                    prod_text += f"Localización:\n"
+                    prod_text += f"Número de Personas: {producto.get('personas', '') or producto.get('num_personas', '')}\n"
+                    prod_text += f"Acumulativo o no: {producto.get('acumulativo', 'No Acumulativo')}\n"
+                    prod_text += f"Población Beneficiaria: {producto.get('poblacion_beneficiaria', '')}"
+                    row.cells[0].text = prod_text
+                    
+                    # Right cell - actividades for this product
+                    prod_actividades = producto.get("actividades", [])
+                    if not prod_actividades:
+                        prod_actividades = top_level_actividades or content.get("actividades", [])
+                    
+                    act_text = ""
+                    for act in prod_actividades:
+                        act_codigo = act.get('codigo', '')
+                        act_nombre = act.get('nombre', '') or act.get('descripcion', '')
+                        act_text += f"{act_codigo} {act_nombre}\n\n"
+                        act_text += f"Costo: $ {act.get('costo', '')}\n"
+                        act_text += f"Etapa: {act.get('etapa', 'Inversión')}\n\n"
+                    row.cells[1].text = act_text
+                
+                self.doc.add_paragraph()
     
     def _add_page_15_actividades_detalle(self, content: dict):
         """Add Page 15 - Actividades Detalle"""
@@ -852,7 +1147,9 @@ class MGASubsidiosBuilder:
         
         for act in actividades:
             p = self.doc.add_paragraph()
-            run = p.add_run(f"Actividad {act.get('codigo', '')} {act.get('codigo', '')} Realizar el pago de los aportes para subsidiar a los usuarios de los servicios públicos domiciliarios de {act.get('nombre', '')} de los estratos uno (1) y dos (2) del municipio.")
+            # Use dynamic activity description instead of hardcoded subsidios text
+            act_desc = act.get('descripcion', act.get('nombre', ''))
+            run = p.add_run(f"Actividad {act.get('codigo', '')} {act_desc}")
             run.bold = True
             run.font.size = Pt(10)
             
@@ -895,57 +1192,102 @@ class MGASubsidiosBuilder:
             self.doc.add_paragraph()
     
     def _add_page_16_riesgos(self, content: dict):
-        """Add Page 16 - Riesgos"""
+        """Add Page 16 - Riesgos with 6-column structure including hierarchy level"""
         self._add_header("Preparación", "Riesgos")
         
         self._add_section_title("Análisis de riesgos alternativa")
         self._add_subsection_title("01 - Análisis de riesgo")
         
-        # Riesgos table
-        table = self.doc.add_table(rows=1, cols=5)
+        # Riesgos table - 6 columns with level indicator
+        table = self.doc.add_table(rows=1, cols=6)
         table.style = 'Table Grid'
+        table.autofit = False
         
-        headers = ["Tipo de riesgo", "Descripción del riesgo", "Probabilidad e impacto", "Efectos", "Medidas de mitigación"]
+        # Set column widths (in inches) - total ~7 inches for letter size with margins
+        # Level column narrower, others adjusted for content
+        col_widths = [Inches(0.7), Inches(0.9), Inches(1.5), Inches(1.0), Inches(1.2), Inches(1.7)]
+        for i, width in enumerate(col_widths):
+            for cell in table.columns[i].cells:
+                cell.width = width
+        
+        # Header row
+        headers = ["", "Tipo de riesgo", "Descripción del riesgo", "Probabilidad e impacto", "Efectos", "Medidas de mitigación"]
         for i, h in enumerate(headers):
-            table.rows[0].cells[i].text = h
-            self._set_cell_shading(table.rows[0].cells[i], "0099CC")
-            for run in table.rows[0].cells[i].paragraphs[0].runs:
+            cell = table.rows[0].cells[i]
+            cell.text = h
+            cell.width = col_widths[i]
+            self._set_cell_shading(cell, "0099CC")
+            for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
                 run.font.size = Pt(8)
+                run.font.bold = True
         
         riesgos = content.get("riesgos", [])
-        for riesgo in riesgos:
+        current_level = None
+        level_start_row = None
+        
+        for idx, riesgo in enumerate(riesgos):
             row = table.add_row()
-            row.cells[0].text = f"{riesgo.get('nivel', '')}\n{riesgo.get('tipo', '')}"
-            row.cells[1].text = riesgo.get("descripcion", "")
-            row.cells[2].text = f"Probabilidad: {riesgo.get('probabilidad', '')}\n\nImpacto: {riesgo.get('impacto', '')}"
-            row.cells[3].text = riesgo.get("efectos", "")
-            row.cells[4].text = riesgo.get("mitigacion", "")
+            
+            # Get level for this risk
+            nivel = riesgo.get('nivel', '')
+            
+            # Add alternating row shading for visual separation
+            if idx % 2 == 0:
+                for i, cell in enumerate(row.cells):
+                    if i > 0:  # Don't shade level column here
+                        self._set_cell_shading(cell, "E8F4F8")  # Light blue
+            
+            # Level column (first column) - teal/green shading
+            row.cells[0].text = nivel
+            self._set_cell_shading(row.cells[0], "7FC8A8")  # Teal/green color
+            for para in row.cells[0].paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(7)
+                    run.font.bold = True
+            
+            # Type column
+            row.cells[1].text = riesgo.get('tipo', 'Administrativos')
+            
+            # Description column
+            desc = riesgo.get('descripcion', '')
+            row.cells[2].text = desc.replace('\\n', '\n')
+            
+            # Probability and impact column
+            prob = riesgo.get('probabilidad', '')
+            imp = riesgo.get('impacto', '')
+            row.cells[3].text = f"Probabilidad:\n{prob}\n\nImpacto: {imp}"
+            
+            # Effects column
+            row.cells[4].text = riesgo.get('efectos', '')
+            
+            # Mitigation column
+            row.cells[5].text = riesgo.get('mitigacion', '')
+            
+            # Apply consistent font size to all cells
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(8)
     
     def _add_pages_12_16(self, content: dict):
         """Add pages 12-16"""
-        # Page 12 - Análisis Técnico
+        # Page 12 - Análisis Técnico (includes localization info)
         self._add_page_12_analisis_tecnico(content.get("pagina_12_analisis_tecnico", {}))
         
         self.doc.add_page_break()
         
-        # Page 13 - Localización
-        self._add_page_13_localizacion(content.get("pagina_13_localizacion", {}))
+        # Page 13/14 - Cadena de Valor (this is the main products/activities table)
+        # Prompt generates this as pagina_13_cadena_valor
+        cadena_data = content.get("pagina_13_cadena_valor") or content.get("pagina_14_cadena_valor", {})
+        self._add_page_14_cadena_valor(cadena_data)
         
         self.doc.add_page_break()
         
-        # Page 14 - Cadena de Valor
-        self._add_page_14_cadena_valor(content.get("pagina_14_cadena_valor", {}))
-        
-        self.doc.add_page_break()
-        
-        # Page 15 - Actividades Detalle
-        self._add_page_15_actividades_detalle(content.get("pagina_15_actividades_detalle", {}))
-        
-        self.doc.add_page_break()
-        
-        # Page 16 - Riesgos
-        self._add_page_16_riesgos(content.get("pagina_16_riesgos", {}))
+        # Page 15/16 - Riesgos (comes AFTER Cadena de Valor)
+        # Prompt generates this as pagina_14_riesgos
+        self._add_page_16_riesgos(content.get("pagina_14_riesgos") or content.get("pagina_16_riesgos", {}))
+
     
     def _add_page_17_riesgos_continuacion(self, content: dict):
         """Add Page 17 - Riesgos Continuation"""
@@ -983,44 +1325,81 @@ class MGASubsidiosBuilder:
             self.doc.add_paragraph()
     
     def _add_page_18_19_ingresos_beneficios(self, content: dict):
-        """Add Pages 18-19 - Ingresos y Beneficios"""
+        """Add Pages 18-19 - Ingresos y Beneficios with multiple benefit items"""
         self._add_header("Preparación", "Ingresos y beneficios")
         
         self._add_section_title("Ingresos y beneficios alternativa")
         self._add_subsection_title("01 - Ingresos y beneficios")
         
-        self.doc.add_paragraph()
-        p = self.doc.add_paragraph()
-        p.add_run(content.get("descripcion", ""))
+        # Handle multiple benefit items
+        beneficios = content.get("beneficios", [])
         
-        self._add_field("Tipo:", content.get("tipo", "Beneficios"))
-        self._add_field("Medido a través de:", content.get("medido", "Número"))
-        self._add_field("Bien producido:", content.get("bien_producido", "Otros"))
-        self._add_field("Razón Precio Cuenta (RPC):", content.get("razon_precio_cuenta", "0.80"))
-        self._add_field("Descripción Cantidad:", content.get("descripcion_cantidad", ""))
-        self._add_field("Descripción Valor Unitario:", content.get("descripcion_valor_unitario", ""))
+        # Fallback to old structure if no beneficios list
+        if not beneficios:
+            beneficios = [{
+                "titulo": content.get("descripcion", ""),
+                "tipo": content.get("tipo", "Beneficios"),
+                "medido": content.get("medido", "Número"),
+                "bien_producido": content.get("bien_producido", "Otros"),
+                "razon_precio_cuenta": content.get("razon_precio_cuenta", "1.0"),
+                "descripcion_cantidad": content.get("descripcion_cantidad", ""),
+                "descripcion_valor_unitario": content.get("descripcion_valor_unitario", ""),
+                "tabla_periodos": content.get("tabla_periodos", [])
+            }]
         
-        # Periodos table
-        tabla_periodos = content.get("tabla_periodos", [])
-        if tabla_periodos:
-            table = self.doc.add_table(rows=1, cols=4)
-            table.style = 'Table Grid'
+        for beneficio in beneficios:
+            # Benefit title
+            self.doc.add_paragraph()
+            p = self.doc.add_paragraph()
+            p.add_run(beneficio.get("titulo", ""))
             
-            headers = ["Periodo", "Cantidad", "Valor unitario", "Valor total"]
-            for i, h in enumerate(headers):
-                table.rows[0].cells[i].text = h
-                self._set_cell_shading(table.rows[0].cells[i], "0099CC")
-                for run in table.rows[0].cells[i].paragraphs[0].runs:
-                    run.font.color.rgb = RGBColor(255, 255, 255)
+            # Fields without labels in gray boxes (inline style)
+            p = self.doc.add_paragraph()
+            p.add_run(f"Tipo: ").bold = True
+            p.add_run(beneficio.get("tipo", "Beneficios"))
             
-            for item in tabla_periodos:
-                row = table.add_row()
-                row.cells[0].text = str(item.get("periodo", ""))
-                row.cells[1].text = str(item.get("cantidad", ""))
-                row.cells[2].text = str(item.get("valor_unitario", ""))
-                row.cells[3].text = str(item.get("valor_total", ""))
-        
-        self.doc.add_paragraph()
+            p = self.doc.add_paragraph()
+            p.add_run(f"Medido a través de: ").bold = True
+            p.add_run(beneficio.get("medido", "Número"))
+            
+            p = self.doc.add_paragraph()
+            p.add_run(f"Bien producido: ").bold = True
+            p.add_run(beneficio.get("bien_producido", ""))
+            
+            p = self.doc.add_paragraph()
+            p.add_run(f"Razón Precio Cuenta (RPC): ").bold = True
+            p.add_run(beneficio.get("razon_precio_cuenta", ""))
+            
+            p = self.doc.add_paragraph()
+            p.add_run(f"Descripción Cantidad: ").bold = True
+            p.add_run(beneficio.get("descripcion_cantidad", ""))
+            
+            p = self.doc.add_paragraph()
+            p.add_run(f"Descripción Valor Unitario: ").bold = True
+            p.add_run(beneficio.get("descripcion_valor_unitario", ""))
+            
+            # Periodos table for this benefit
+            tabla_periodos = beneficio.get("tabla_periodos", [])
+            if tabla_periodos:
+                table = self.doc.add_table(rows=1, cols=4)
+                table.style = 'Table Grid'
+                
+                headers = ["Periodo", "Cantidad", "Valor unitario", "Valor total"]
+                for i, h in enumerate(headers):
+                    table.rows[0].cells[i].text = h
+                    self._set_cell_shading(table.rows[0].cells[i], "0099CC")
+                    for run in table.rows[0].cells[i].paragraphs[0].runs:
+                        run.font.color.rgb = RGBColor(255, 255, 255)
+                        run.font.size = Pt(9)
+                
+                for item in tabla_periodos:
+                    row = table.add_row()
+                    row.cells[0].text = str(item.get("periodo", ""))
+                    row.cells[1].text = str(item.get("cantidad", ""))
+                    row.cells[2].text = str(item.get("valor_unitario", ""))
+                    row.cells[3].text = str(item.get("valor_total", ""))
+            
+            self.doc.add_paragraph()
         
         # Totales section
         self._add_subsection_title("02 - Totales")
@@ -1044,7 +1423,7 @@ class MGASubsidiosBuilder:
                 row.cells[2].text = str(item.get("total", ""))
     
     def _add_page_20_flujo_economico(self, content: dict):
-        """Add Page 20 - Flujo Económico"""
+        """Add Page 20 - Flujo Económico with 10-column table"""
         self._add_header("Evaluación", "Flujo Económico")
         
         p = self.doc.add_paragraph()
@@ -1056,12 +1435,12 @@ class MGASubsidiosBuilder:
         
         flujo = content.get("flujo", [])
         if flujo:
-            table = self.doc.add_table(rows=1, cols=9)
+            table = self.doc.add_table(rows=1, cols=10)
             table.style = 'Table Grid'
             
             headers = ["P", "Beneficios e ingresos (+)", "Créditos(+)", "Costos de preinversión (-)", 
                       "Costos de inversión (-)", "Costos de operación (-)", "Amortización (-)", 
-                      "Intereses de los créditos (-)", "Flujo Neto"]
+                      "Intereses de los créditos (-)", "Valor de salvamento (+)", "Flujo Neto"]
             
             for i, h in enumerate(headers):
                 table.rows[0].cells[i].text = h
@@ -1074,13 +1453,14 @@ class MGASubsidiosBuilder:
                 row = table.add_row()
                 row.cells[0].text = str(item.get("p", ""))
                 row.cells[1].text = str(item.get("beneficios", ""))
-                row.cells[2].text = str(item.get("creditos", ""))
-                row.cells[3].text = str(item.get("costos_preinversion", ""))
+                row.cells[2].text = str(item.get("creditos", "$0,0"))
+                row.cells[3].text = str(item.get("costos_preinversion", "$0,0"))
                 row.cells[4].text = str(item.get("costos_inversion", ""))
-                row.cells[5].text = str(item.get("costos_operacion", ""))
-                row.cells[6].text = str(item.get("amortizacion", ""))
-                row.cells[7].text = str(item.get("intereses", ""))
-                row.cells[8].text = str(item.get("flujo_neto", ""))
+                row.cells[5].text = str(item.get("costos_operacion", "$0,0"))
+                row.cells[6].text = str(item.get("amortizacion", "$0,0"))
+                row.cells[7].text = str(item.get("intereses", "$0,0"))
+                row.cells[8].text = str(item.get("valor_salvamento", "$0,0"))
+                row.cells[9].text = str(item.get("flujo_neto", ""))
     
     def _add_page_21_indicadores_decision(self, content: dict):
         """Add Page 21 - Indicadores y Decisión"""
@@ -1129,8 +1509,11 @@ class MGASubsidiosBuilder:
         self._add_subsection_title("Costo por capacidad")
         
         costo_cap = content.get("costo_capacidad", {})
+        productos = costo_cap.get("productos", [])
         
-        table2 = self.doc.add_table(rows=2, cols=2)
+        # Create table with header + rows for each product
+        num_rows = max(2, len(productos) + 1)  # At least 2 rows (header + 1 data)
+        table2 = self.doc.add_table(rows=1, cols=2)
         table2.style = 'Table Grid'
         table2.rows[0].cells[0].text = "Producto"
         table2.rows[0].cells[1].text = "Costo unitario (valor presente)"
@@ -1139,8 +1522,17 @@ class MGASubsidiosBuilder:
             for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
         
-        table2.rows[1].cells[0].text = costo_cap.get("producto", "")
-        table2.rows[1].cells[1].text = costo_cap.get("costo_unitario", "")
+        # Add product rows
+        if productos:
+            for prod in productos:
+                row = table2.add_row()
+                row.cells[0].text = prod.get("nombre", "")
+                row.cells[1].text = prod.get("costo", "")
+        else:
+            # Fallback to old single product format
+            row = table2.add_row()
+            row.cells[0].text = costo_cap.get("producto", "")
+            row.cells[1].text = costo_cap.get("costo_unitario", "")
         
         self.doc.add_paragraph()
         
@@ -1178,172 +1570,503 @@ class MGASubsidiosBuilder:
         # Page 21 - Indicadores y Decisión
         self._add_page_21_indicadores_decision(content.get("pagina_21_indicadores_decision", {}))
     
-    def _add_page_22_indicadores_producto(self, content: dict):
-        """Add Page 22 - Indicadores de Producto"""
+    def _add_pages_indicadores(self, content: dict):
+        """Add dynamic pages for Indicadores de producto (one per product)"""
+        # Get list of indicators
+        indicadores = content.get("indicadores_producto", [])
+        
+        # Fallback for old structure if AI returns single object
+        if not indicadores:
+            old_single = content.get("pagina_22_indicadores_producto")
+            if old_single:
+                indicadores = [old_single]
+        
+        # If still empty, add at least one placeholder
+        if not indicadores:
+             indicadores = [{
+                 "objetivo": {"numero": "1", "descripcion": ""},
+                 "producto": {"nombre": "", "codigo": "1.1"},
+                 "indicador": {"nombre": "", "codigo": "1.1.1"}
+             }]
+
+        for idx, ind_data in enumerate(indicadores):
+            self._add_page_indicador(ind_data)
+            # Add page break after each indicator page, except potentially the last if that's the end of doc
+            # But usually it's cleaner to end with a break or let the save handle it.
+            # We will add a break if it's not the last one, OR if we want to ensure separation.
+            # Given MGA structure, usually each new page starts fresh.
+            if idx < len(indicadores) - 1:
+                self.doc.add_page_break()
+
+    def _add_page_indicador(self, data: dict):
+        """Render a single 'Indicadores de producto' page matching the client template"""
+        
+        # Header: Programación / Indicadores de producto
         self._add_header("Programación", "Indicadores de producto")
         
-        self._add_section_title("Indicadores de producto")
-        
-        # Objetivo
-        objetivo = content.get("objetivo", {})
-        self._add_subsection_title(f"01 - Objetivo {objetivo.get('numero', '1')}")
-        
-        p = self.doc.add_paragraph()
-        p.add_run(f"{objetivo.get('numero', '1')}. {objetivo.get('descripcion', '')}")
-        
+        # Spacing
         self.doc.add_paragraph()
         
-        # Producto
-        producto = content.get("producto", {})
+        # 1. Producto Section
+        # Title "Producto" in Green
         p = self.doc.add_paragraph()
         run = p.add_run("Producto")
-        run.font.color.rgb = RGBColor(0, 153, 204)
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(112, 173, 71) # Client Green
+        run.bold = True
         
-        p = self.doc.add_paragraph()
-        p.add_run(f"{producto.get('codigo', '1.1')}. {producto.get('nombre', '')}     {producto.get('complemento', '')}")
+        # Gray Box for Product Name
+        prod = data.get("producto", {})
+        prod_text = f"{prod.get('codigo', '')} {prod.get('nombre', '')}"
+        
+        table_prod = self.doc.add_table(rows=1, cols=1)
+        table_prod.autofit = True
+        cell_prod = table_prod.rows[0].cells[0]
+        self._set_cell_shading(cell_prod, "F2F2F2") # Light Gray
+        
+        p_prod_val = cell_prod.paragraphs[0]
+        p_prod_val.paragraph_format.space_before = Pt(2)
+        p_prod_val.paragraph_format.space_after = Pt(2)
+        run_prod_val = p_prod_val.add_run(prod_text)
+        run_prod_val.font.size = Pt(10)
         
         self.doc.add_paragraph()
         
-        # Indicador
-        indicador = content.get("indicador", {})
+        # 2. Indicador Section
+        # Title "Indicador" in Green
         p = self.doc.add_paragraph()
         run = p.add_run("Indicador")
-        run.font.color.rgb = RGBColor(0, 153, 204)
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(112, 173, 71) # Client Green
+        run.bold = True
         
-        p = self.doc.add_paragraph()
-        p.add_run(f"{indicador.get('codigo', '1.1.1')} {indicador.get('nombre', '')}")
+        # Gray Box for Indicator Details
+        ind = data.get("indicador", {})
         
-        self._add_field("Medido a través de:", indicador.get("medido", ""))
-        self._add_field("Meta total:", indicador.get("meta_total", ""))
-        self._add_field("Fórmula:", indicador.get("formula", ""))
-        self._add_field("Es acumulativo:", indicador.get("es_acumulativo", ""))
-        self._add_field("Es Principal:", indicador.get("es_principal", ""))
-        self._add_field("Tipo de Fuente:", indicador.get("tipo_fuente", ""))
-        self._add_field("Fuente de Verificación:", indicador.get("fuente_verificacion", ""))
+        table_ind = self.doc.add_table(rows=1, cols=1)
+        table_ind.autofit = True
+        cell_ind = table_ind.rows[0].cells[0]
+        self._set_cell_shading(cell_ind, "F2F2F2") # Light Gray
         
+        # Content lines
+        lines = []
+        lines.append((f"{ind.get('codigo', '')} {ind.get('nombre', '')}", False)) # Indicator Name
+        lines.append((f"Medido a través de: {ind.get('medido', '')}", True)) # Bold label prefix manually handled
+        lines.append((f"Meta total: {ind.get('meta_total', '')}", True))
+        lines.append((f"Fórmula: {ind.get('formula', '')}", True))
+        lines.append((f"Es acumulativo: {ind.get('es_acumulativo', '')}", True))
+        lines.append((f"Es Principal: {ind.get('es_principal', '')}", True))
+        lines.append((f"Tipo de Fuente: {ind.get('tipo_fuente', '')}", True))
+        lines.append((f"Fuente de Verificación: {ind.get('fuente_verificacion', '')}", True))
+        
+        p = cell_ind.paragraphs[0]
+        for text, has_bold_prefix in lines:
+            if has_bold_prefix and ":" in text:
+                label, val = text.split(":", 1)
+                run_l = p.add_run(label + ":")
+                run_l.bold = True
+                run_l.font.size = Pt(10)
+                run_v = p.add_run(val)
+                run_v.font.size = Pt(10)
+            else:
+                run = p.add_run(text)
+                run.font.size = Pt(10)
+            
+            # Add newline (except last)
+            p.add_run("\n")
+            
         self.doc.add_paragraph()
         
-        # Programación de indicadores
+        # 3. Programación de indicadores Section
         p = self.doc.add_paragraph()
         run = p.add_run("Programación de indicadores")
-        run.font.color.rgb = RGBColor(0, 153, 204)
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(112, 173, 71) # Client Green
+        run.bold = True
         
-        programacion = content.get("programacion_indicadores", [])
-        if programacion:
-            table = self.doc.add_table(rows=1, cols=4)
-            table.style = 'Table Grid'
+        programacion = data.get("programacion_indicadores", [])
+        if not programacion:
+            # Add default if empty
+            programacion = [{"periodo": "0", "meta": ind.get("meta_total", "0")}]
             
-            headers = ["Periodo", "Meta por periodo", "Periodo", "Meta por periodo"]
-            for i, h in enumerate(headers):
-                table.rows[0].cells[i].text = h
-                self._set_cell_shading(table.rows[0].cells[i], "0099CC")
-                for run in table.rows[0].cells[i].paragraphs[0].runs:
-                    run.font.color.rgb = RGBColor(255, 255, 255)
+        # Table with max 2 periods per row block if we want to mimic the wide style, 
+        # or just a simple list. The image shows:
+        # | Periodo | Meta por periodo | Periodo | Meta por periodo |
+        # So it's a 4-column table filling the width.
+        
+        table_prog = self.doc.add_table(rows=1, cols=4)
+        table_prog.style = 'Table Grid'
+        
+        # Headers: Periodo | Meta | Periodo | Meta
+        headers = ["Periodo", "Meta por periodo", "Periodo", "Meta por periodo"]
+        for i, h in enumerate(headers):
+            cell = table_prog.rows[0].cells[i]
+            cell.text = h
+            self._set_cell_shading(cell, "0099CC") # Client Blue
+            for run in cell.paragraphs[0].runs:
+                run.font.color.rgb = RGBColor(255, 255, 255)
+                run.font.bold = True
+                run.font.size = Pt(9)
+                
+        # Data Rows
+        # Valid data items
+        items = programacion
+        
+        # We process items in pairs (2 per row: 0,1 ; 2,3 etc)
+        import math
+        num_rows = math.ceil(len(items) / 2)
+        
+        for r in range(num_rows):
+            row = table_prog.add_row()
             
-            for item in programacion:
-                row = table.add_row()
+            # First item of pair
+            idx1 = r * 2
+            if idx1 < len(items):
+                item = items[idx1]
                 row.cells[0].text = str(item.get("periodo", ""))
                 row.cells[1].text = str(item.get("meta", ""))
-    
-    def _add_page_23_regionalizacion(self, content: dict):
-        """Add Page 23 - Regionalización"""
+                self._set_cell_shading(row.cells[0], "E8F4F8") # Light Blue for period? image shows blue header, light blue data
+                self._set_cell_shading(row.cells[1], "E8F4F8")
+            
+            # Second item of pair
+            idx2 = (r * 2) + 1
+            if idx2 < len(items):
+                item = items[idx2]
+                row.cells[2].text = str(item.get("periodo", ""))
+                row.cells[3].text = str(item.get("meta", ""))
+                # Shade second pair too? Image isn't fully clear on alt rows vs blocks. 
+                # Let's keep it clean or same shading.
+
+
+    def _add_pages_regionalizacion(self, content: dict):
+        """Add dynamic pages for Regionalizacion (one block per product)"""
+        reg_productos = content.get("regionalizacion_productos", [])
+        if not reg_productos:
+            return
+
         self._add_header("Programación", "Regionalización")
-        
         self._add_section_title("Regionalización")
         
-        p = self.doc.add_paragraph()
-        run = p.add_run("Producto: ")
-        run.bold = True
-        p.add_run(content.get("producto", ""))
-        
-        self.doc.add_paragraph()
-        
-        # Ubicación table
-        ubicacion = content.get("ubicacion", {})
-        table = self.doc.add_table(rows=2, cols=5)
-        table.style = 'Table Grid'
-        
-        headers = ["Región", "Departamento", "Municipio", "Tipo de Agrupación", "Agrupación"]
-        for i, h in enumerate(headers):
-            table.rows[0].cells[i].text = h
-            self._set_cell_shading(table.rows[0].cells[i], "0099CC")
-            for run in table.rows[0].cells[i].paragraphs[0].runs:
-                run.font.color.rgb = RGBColor(255, 255, 255)
-        
-        table.rows[1].cells[0].text = ubicacion.get("region", "Caribe")
-        table.rows[1].cells[1].text = ubicacion.get("departamento", "")
-        table.rows[1].cells[2].text = ubicacion.get("municipio", "")
-        table.rows[1].cells[3].text = ubicacion.get("tipo_agrupacion", "")
-        table.rows[1].cells[4].text = ubicacion.get("agrupacion", "")
-        
-        self.doc.add_paragraph()
-        
-        # Costos table
-        tabla_costos = content.get("tabla_costos", [])
-        if tabla_costos:
-            table2 = self.doc.add_table(rows=1, cols=6)
-            table2.style = 'Table Grid'
+        for idx, prod_data in enumerate(reg_productos):
+            # Container paragraph for spacing
+            p = self.doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(12)
+            p.paragraph_format.space_after = Pt(0)
+
+            # Create ONE single table for the entire block to ensure alignment
+            # Structure:
+            # Row 0: Product Name (Gray) - Merged
+            # Row 1: Location Headers (Blue) - Cols [0], [1], [2], [3], [4] (last two merged?? No, 5 cols)
+            # Row 2: Location Data - Cols [0], [1], [2], [3], [4]
+            # Row 3: Cost Headers (Blue) - Needs 6 cols.
+            # MIXED COLUMNS ISSUE: Word tables are grid based. 
+            # Solution: Use a 6-column grid.
+            # Loc Headers: [0](1), [1](1), [2](2 merged), [3](1), [4](1) -> 6 grid units?
+            # Let's simple use two separate tables but REMOVE the paragraph break between them to make them look merged.
             
-            headers2 = ["Periodo", "Costo Total", "Costo Regionalizado", "Meta Total", "Meta Regionalizada", "Beneficiarios"]
-            for i, h in enumerate(headers2):
-                table2.rows[0].cells[i].text = h
-                self._set_cell_shading(table2.rows[0].cells[i], "0099CC")
-                for run in table2.rows[0].cells[i].paragraphs[0].runs:
-                    run.font.color.rgb = RGBColor(255, 255, 255)
-                    run.font.size = Pt(8)
+            # --- Table 1: Product Header ---
+            t1 = self.doc.add_table(rows=1, cols=1)
+            t1.autofit = True
+            cell = t1.rows[0].cells[0]
+            self._set_cell_shading(cell, "E0E0E0") # Light Gray
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after = Pt(2)
+            p.add_run("Producto: ").bold = True
+            p.add_run(prod_data.get("producto", ""))
             
-            for item in tabla_costos:
-                row = table2.add_row()
+            # --- Table 2: Location (5 cols) ---
+            # To visually merge, we rely on 0 spacing.
+            t2 = self.doc.add_table(rows=2, cols=5)
+            t2.style = 'Table Grid'
+            
+            headers_loc = ["Región", "Departamento", "Municipio", "Tipo de Agrupación", "Agrupación"]
+            for i, h in enumerate(headers_loc):
+                cell = t2.rows[0].cells[i]
+                cell.text = h
+                self._set_cell_shading(cell, "0099CC") # Client Blue
+                for run in cell.paragraphs[0].runs:
+                    run.font.color.rgb = RGBColor(255,255,255)
+                    run.font.bold = True
+                    run.font.size = Pt(9)
+
+            ubicacion = prod_data.get("ubicacion", {})
+            t2.rows[1].cells[0].text = ubicacion.get("region", "Caribe")
+            t2.rows[1].cells[1].text = ubicacion.get("departamento", "")
+            t2.rows[1].cells[2].text = ubicacion.get("municipio", "")
+            t2.rows[1].cells[3].text = ubicacion.get("tipo_agrupacion", "")
+            t2.rows[1].cells[4].text = ubicacion.get("agrupacion", "")
+            
+            for cell in t2.rows[1].cells:
+                for p in cell.paragraphs:
+                    for run in p.runs:
+                        run.font.size = Pt(9)
+
+            # --- Table 3: Costs (6 cols) ---
+            tabla_costos = prod_data.get("tabla_costos", [])
+            if not tabla_costos:
+                tabla_costos = [{"periodo": "0", "costo_total": "0"}]
+                
+            t3 = self.doc.add_table(rows=1 + len(tabla_costos), cols=6)
+            t3.style = 'Table Grid'
+            
+            headers_cost = ["Periodo", "Costo Total", "Costo\nRegionalizado", "Meta Total", "Meta\nRegionalizada", "Beneficiarios"]
+            for i, h in enumerate(headers_cost):
+                cell = t3.rows[0].cells[i]
+                cell.text = h
+                self._set_cell_shading(cell, "8DB4E2") # Periwinkle Blue
+                for run in cell.paragraphs[0].runs:
+                    run.font.color.rgb = RGBColor(255,255,255)
+                    run.font.bold = True
+                    run.font.size = Pt(9)
+            
+            for r_idx, item in enumerate(tabla_costos):
+                row = t3.rows[r_idx + 1]
                 row.cells[0].text = str(item.get("periodo", ""))
                 row.cells[1].text = str(item.get("costo_total", ""))
                 row.cells[2].text = str(item.get("costo_regionalizado", ""))
                 row.cells[3].text = str(item.get("meta_total", ""))
                 row.cells[4].text = str(item.get("meta_regionalizada", ""))
                 row.cells[5].text = str(item.get("beneficiarios", ""))
-    
-    def _add_page_24_focalizacion(self, content: dict):
-        """Add Page 24 - Focalización (skip if no data)"""
-        tabla_focalizacion = content.get("tabla_focalizacion", [])
+                
+                for cell in row.cells:
+                    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    for p in cell.paragraphs:
+                        for run in p.runs:
+                            run.font.size = Pt(9)
+            
+            # Post-processing to "merge" them visually:
+            # 1. Ensure columns widths are aligned roughly (Total width ~7 inches)
+            # T2 (5 cols): 1.4 inches each
+            # T3 (6 cols): 1.16 inches each
+            # This mismatch is natural. The screenshot shows they are NOT aligned vertically.
+            # The key to "looking like the screenshot" is NO SPACE between tables.
+            
+            pass 
+            # Word automatically puts space unless we configure paragraph spacing tightly.
+            # The python-docx library adds separate tables. 
+            # We can try to reduce the paragraph formatting between them.
+
+    def _add_page_focalizacion(self, content: dict):
+        """Add Page 24 - Focalización (Advanced Report Style)"""
+        focalizacion = content.get("focalizacion", [])
         
-        # Skip this section entirely if no data
-        if not tabla_focalizacion:
-            return
-        
+        if not focalizacion:
+             focalizacion = [{"politica": "", "categoria": "", "subcategoria": "", "valor": "0"}]
+
+        # --- Data Grouping Logic ---
+        # Structure: { Policy: { Category: [Items...] } }
+        grouped_data = {}
+        for item in focalizacion:
+            pol = item.get("politica", "General")
+            cat = item.get("categoria", "General")
+            if pol not in grouped_data:
+                grouped_data[pol] = {}
+            if cat not in grouped_data[pol]:
+                grouped_data[pol][cat] = []
+            grouped_data[pol][cat].append(item)
+
         self._add_header("Programación", "Focalización")
         self._add_section_title("Focalización")
         
-        table = self.doc.add_table(rows=1, cols=4)
+        # Determine total rows needed
+        # Header + Use a list to store row definitions first to calculate spans
+        rows_to_render = [] # List of tuples/dicts representing row data
+        
+        # Iterate Grouped Data
+        for policy, categories in grouped_data.items():
+            policy_start_idx = len(rows_to_render)
+            policy_total_val = 0.0
+            
+            for category, items in categories.items():
+                cat_start_idx = len(rows_to_render)
+                cat_total_val = 0.0
+                
+                # Items
+                for item in items:
+                    try:
+                        val = float(str(item.get("valor", "0")).replace(".", "").replace(",", ".").replace("$", "").strip())
+                    except:
+                        val = 0.0
+                    cat_total_val += val
+                    
+                    rows_to_render.append({
+                        "type": "item",
+                        "policy": policy,
+                        "category": category,
+                        "subcategory": item.get("subcategoria", ""),
+                        "value": item.get("valor", "")
+                    })
+                
+                # Category Total Row
+                policy_total_val += cat_total_val
+                rows_to_render.append({
+                    "type": "total_cat",
+                    "policy": policy,
+                    "category": category, # Still part of this category block for merging
+                    "subcategory": "Total Categoría",
+                    "value": f"${cat_total_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                })
+                
+            # Policy Total Row
+            rows_to_render.append({
+                "type": "total_pol",
+                "policy": policy, # Still part of this policy block for merging
+                "category": "TOTAL POLITICA TRANSVERSAL",
+                "subcategory": "", 
+                "value": f"${policy_total_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            })
+
+        # --- Table Rendering ---
+        table = self.doc.add_table(rows=1 + len(rows_to_render), cols=4)
         table.style = 'Table Grid'
         
+        # Headers
         headers = ["Política", "Categoría", "SubCategoría", "Valor"]
         for i, h in enumerate(headers):
-            table.rows[0].cells[i].text = h
-            self._set_cell_shading(table.rows[0].cells[i], "0099CC")
-            for run in table.rows[0].cells[i].paragraphs[0].runs:
+            cell = table.rows[0].cells[i]
+            cell.text = h
+            self._set_cell_shading(cell, "0099CC") # Client Blue
+            self._set_cell_margins(cell, top=100, bottom=100) # Increased padding (approx 5pt)
+            for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(255, 255, 255)
+                run.font.bold = True
+                run.font.size = Pt(10)
+
+        # Render Rows
+        LIGHT_BLUE_BG = "E8F4F8" # Very light blue match
         
-        for item in tabla_focalizacion:
-            row = table.add_row()
-            row.cells[0].text = str(item.get("politica", ""))
-            row.cells[1].text = str(item.get("categoria", ""))
-            row.cells[2].text = str(item.get("subcategoria", ""))
-            row.cells[3].text = str(item.get("valor", ""))
-    
-    def _add_pages_22_24(self, content: dict):
-        """Add pages 22-24"""
-        # Page 22 - Indicadores de Producto
-        self._add_page_22_indicadores_producto(content.get("pagina_22_indicadores_producto", {}))
+        for r_idx, row_data in enumerate(rows_to_render):
+            table_row = table.rows[r_idx + 1] # +1 for header
+            
+            # Content
+            # P/C handling is done via merging later, but set text for reference or first items
+            if row_data["type"] == "total_pol":
+                table_row.cells[1].text = row_data["category"] # "TOTAL POLITICA..."
+                table_row.cells[3].text = row_data["value"]
+                # Col 1 is merged (policy)
+                # Col 2 spans Col 2-3? Or just text in Col 2. Reference shows "TOTAL..." in Cat column.
+                
+            elif row_data["type"] == "total_cat":
+                table_row.cells[2].text = row_data["subcategory"] # "Total Categoría" uses SubCat column visually?
+                # Actually screenshot shows "Total Categoría" in the THIRD column (SubCategoría)? 
+                # Wait, "Total Categoría" text is aligned right next to value? 
+                # Screenshot 2: "Total Categoría" is in SubCategoría column.
+                table_row.cells[2].text = "Total Categoría"
+                table_row.cells[3].text = row_data["value"]
+                
+            else: # Item
+                table_row.cells[0].text = row_data["policy"]
+                table_row.cells[1].text = row_data["category"]
+                table_row.cells[2].text = row_data["subcategory"]
+                table_row.cells[3].text = str(row_data["value"])
+            
+            # Styling (All rows light blue)
+            for cell in table_row.cells:
+                self._set_cell_shading(cell, LIGHT_BLUE_BG)
+                self._set_cell_margins(cell, top=100, bottom=100) # Airy look
+                for p in cell.paragraphs:
+                    for run in p.runs:
+                        run.font.size = Pt(9)
+            
+            # Formatting specifics
+            if row_data["type"] == "total_cat":
+                # Make "Total Categoría" bold?
+                pass
+            
+            # Align Value
+            table_row.cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+        # --- Merging Logic ---
+        # Scan through rows_to_render to find spans
         
-        self.doc.add_page_break()
+        # Merge Policies
+        start_idx = 0
+        current_pol = rows_to_render[0]["policy"]
+        for i in range(1, len(rows_to_render)):
+            pol = rows_to_render[i]["policy"]
+            if pol != current_pol:
+                # End of block, merge previous
+                self._merge_vertically(table, 0, start_idx + 1, i) # i is now header+i (end exclusive?) -> +1 for header
+                # update
+                current_pol = pol
+                start_idx = i
+        # Merge last block
+        self._merge_vertically(table, 0, start_idx + 1, len(rows_to_render))
+
+        # Merge Categories (Only within same policy)
+        # Be careful not to merge "TOTAL POLITICA" row into category logic if it breaks visual
+        start_idx = 0
+        current_cat = rows_to_render[0]["category"]
+        current_pol_for_cat = rows_to_render[0]["policy"]
         
-        # Page 23 - Regionalización
-        self._add_page_23_regionalizacion(content.get("pagina_23_regionalizacion", {}))
+        for i in range(1, len(rows_to_render)):
+            row = rows_to_render[i]
+            # Break merge if: Policy changes OR Category changes OR Type is total_pol
+            if row["policy"] != current_pol_for_cat or row["category"] != current_cat or row["type"] == "total_pol":
+                # Merge previous block
+                # Don't merge if it's just 1 row
+                if i - start_idx > 1:
+                     self._merge_vertically(table, 1, start_idx + 1, i)
+                
+                # Reset
+                start_idx = i
+                current_cat = row["category"]
+                current_pol_for_cat = row["policy"]
+        # Last block
+        if len(rows_to_render) - start_idx > 1:
+             # Check if last row is total_pol, assume it breaks category content
+             last_type = rows_to_render[-1]["type"]
+             if last_type != "total_pol":
+                self._merge_vertically(table, 1, start_idx + 1, len(rows_to_render))
+
+    def _merge_vertically(self, table, col_idx, start_row_idx, end_row_idx):
+        """Merge cells vertically from start_row_idx to end_row_idx (exclusive of end)"""
+        # docx logic: set vMerge=restart on first, vMerge=continue on rest
+        if end_row_idx <= start_row_idx:
+            return
+            
+        cell_start = table.rows[start_row_idx].cells[col_idx]
+        tc_start = cell_start._tc
+        tcPr_start = tc_start.get_or_add_tcPr()
+        vMerge_start = OxmlElement('w:vMerge')
+        vMerge_start.set(qn('w:val'), 'restart')
+        tcPr_start.append(vMerge_start)
         
-        self.doc.add_page_break()
+        for i in range(start_row_idx + 1, end_row_idx):
+            cell = table.rows[i].cells[col_idx]
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            vMerge = OxmlElement('w:vMerge')
+            # attribute val defaults to 'continue' if omitted, but explicit is safer
+            tcPr.append(vMerge)
+            
+            # Clear text in merged cells to avoid duplication display issues in some viewers
+            cell.text = ""
+
+    def _set_cell_margins(self, cell, top=0, bottom=0, start=0, end=0):
+        """Set cell margins (padding) in Twips (1/20 pt)"""
+        tc = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+        tcMar = OxmlElement('w:tcMar')
         
-        # Page 24 - Focalización
-        self._add_page_24_focalizacion(content.get("pagina_24_focalizacion", {}))
-    
+        if top > 0:
+            node = OxmlElement('w:top')
+            node.set(qn('w:w'), str(top))
+            node.set(qn('w:type'), 'dxa')
+            tcMar.append(node)
+        if bottom > 0:
+            node = OxmlElement('w:bottom')
+            node.set(qn('w:w'), str(bottom))
+            node.set(qn('w:type'), 'dxa')
+            tcMar.append(node)
+            
+        # Add to properties (replace existing if any? simplified append here)
+        existing = tcPr.find(qn('w:tcMar'))
+        if existing is not None:
+            tcPr.remove(existing)
+        tcPr.append(tcMar)
+
     def _set_cell_shading(self, cell, color):
         """Set cell background color"""
         tc = cell._tc
@@ -1371,12 +2094,12 @@ class MGASubsidiosBuilder:
             municipio = "documento"
         
         # First save as DOCX
-        docx_filename = f"MGA_Subsidios_{municipio}_{timestamp}.docx"
+        docx_filename = f"MGA_{municipio}_{timestamp}.docx"
         docx_filepath = os.path.join(self.output_dir, docx_filename)
         self.doc.save(docx_filepath)
         
         # Convert to PDF
-        pdf_filename = f"MGA_Subsidios_{municipio}_{timestamp}.pdf"
+        pdf_filename = f"MGA_{municipio}_{timestamp}.pdf"
         pdf_filepath = os.path.join(self.output_dir, pdf_filename)
         
         try:

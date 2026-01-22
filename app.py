@@ -30,6 +30,7 @@ from generators.mga_subsidios_generator import MGASubsidiosGenerator
 from generators.docx_builder import DocumentBuilder
 from extractors.document_data_extractor import extract_data_from_upload
 from generators.unified_generator import UnifiedGenerator
+from editors.mga_editor import edit_mga_document, MGAEditor
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -138,26 +139,26 @@ def validate_form_data(data: dict, doc_type: str) -> list:
     # ═══════════════════════════════════════════════════════════════
     
     MGA_SUBSIDIOS_STRUCTURE = {
-        # PAGE 1: Datos Básicos
+        # PAGE 1: Datos Básicos - Only minimal required (AI extracts rest from files)
         "pagina_1_datos_basicos": {
             "fields": {
                 "municipio": {"required": True, "min_len": 3, "desc": "Nombre del municipio"},
                 "departamento": {"required": True, "min_len": 3, "desc": "Nombre del departamento"},
-                "nombre_proyecto": {"required": True, "min_len": 20, "desc": "Nombre completo del proyecto"},
-                "bpin": {"required": True, "min_len": 8, "desc": "Código BPIN del proyecto"},
-                "valor_total": {"required": True, "numeric": True, "desc": "Valor total en pesos COP"},
-                "duracion": {"required": True, "numeric": True, "desc": "Duración en días"},
-                "entidad": {"required": True, "min_len": 5, "desc": "Entidad ejecutora"},
-                "responsable": {"required": True, "min_len": 5, "desc": "Nombre del responsable"},
+                "nombre_proyecto": {"required": False, "min_len": 10, "desc": "Nombre del proyecto (extraído del POAI)"},
+                "bpin": {"required": False, "min_len": 8, "desc": "Código BPIN (extraído del POAI)"},
+                "valor_total": {"required": False, "numeric": True, "desc": "Valor total (extraído del POAI)"},
+                "duracion": {"required": False, "numeric": True, "desc": "Duración en días"},
+                "entidad": {"required": False, "min_len": 5, "desc": "Entidad ejecutora"},
+                "responsable": {"required": True, "min_len": 3, "desc": "Nombre del responsable"},
                 "cargo": {"required": False, "min_len": 3, "desc": "Cargo del responsable"}
             }
         },
-        # PAGE 2: Plan de Desarrollo
+        # PAGE 2: Plan de Desarrollo - AI extracts from uploaded files
         "pagina_2_plan_desarrollo": {
             "fields": {
-                "plan_nacional": {"required": True, "min_len": 10, "desc": "Plan Nacional de Desarrollo"},
-                "plan_departamental": {"required": True, "min_len": 10, "desc": "Plan Departamental de Desarrollo"},
-                "plan_municipal": {"required": True, "min_len": 10, "desc": "Plan Municipal de Desarrollo"}
+                "plan_nacional": {"required": False, "min_len": 10, "desc": "Plan Nacional de Desarrollo"},
+                "plan_departamental": {"required": False, "min_len": 10, "desc": "Plan Departamental (extraído del PDF)"},
+                "plan_municipal": {"required": False, "min_len": 10, "desc": "Plan Municipal (extraído del PDF)"}
             }
         },
         # PAGE 3: Problemática
@@ -717,184 +718,106 @@ def render_sidebar():
         )
         st.session_state.generation_mode = generation_mode
         
-        # Upload previous document for update mode
+        # ══════════════════════════════════════
+        # UPDATE MODE CONTROLS
+        # ══════════════════════════════════════
         if generation_mode == "actualizar_existente":
-            st.caption("📄 Documento base (opcional):")
+            st.success("📝 Modo Edición Activado")
+            
+            # 1. PROMPT (First, as requested)
+            st.markdown("**1. Instrucciones de Edición**")
+            edit_prompt = st.text_area(
+                "Instrucciones",
+                placeholder="Ej: Actualizar los montos a la vigencia 2026 y cambiar el nombre del responsable...",
+                height=120,
+                key="edit_prompt_input",
+                help="Describa qué cambios desea que la IA realice en el documento.",
+                label_visibility="collapsed"
+            )
+            # Update session state immediately
+            if edit_prompt != st.session_state.get("edit_instructions_text", ""):
+                 st.session_state.edit_instructions_text = edit_prompt
+
+            # 2. FILE UPLOAD (Second)
+            st.markdown("**2. Documento a Editar**")
             prev_doc = st.file_uploader(
                 "Subir MGA anterior",
-                type=["pdf", "docx", "xlsx"],
-                help="Suba el MGA o documento a editar",
+                type=["pdf", "docx"],
+                help="Suba el documento MGA (PDF o Word) que desea actualizar",
                 key="prev_doc_upload",
                 label_visibility="collapsed"
             )
+            
             if prev_doc:
-                st.success(f"✓ {prev_doc.name}")
                 st.session_state.previous_document = prev_doc
-                
-                # Extract pages from uploaded document for preview
-                from extractors.document_data_extractor import DocumentDataExtractor
-                extractor = DocumentDataExtractor()
                 file_ext = prev_doc.name.split('.')[-1].lower()
                 
-                # Show page count info
-                if file_ext == 'pdf':
-                    try:
+                # Page Count Logic (PDF & DOCX)
+                page_count = 0
+                try:
+                    if file_ext == 'pdf':
                         import fitz
                         prev_doc.seek(0)
                         doc = fitz.open(stream=prev_doc.read(), filetype="pdf")
                         page_count = doc.page_count
-                        st.info(f"📄 Documento tiene {page_count} páginas")
                         prev_doc.seek(0)
-                    except:
-                        page_count = 0
-                else:
-                    page_count = 0
-            
-            # Edit mode selection
-            st.caption("🔧 Tipo de Edición")
-            edit_mode = st.radio(
-                "Modo de edición",
-                ["Edición Específica (páginas)", "Edición Completa (todo el documento)"],
-                key="edit_mode_radio",
-                label_visibility="collapsed",
-                help="Elija si quiere editar páginas específicas o todo el documento"
-            )
-            
-            if "páginas" in edit_mode and prev_doc and page_count > 0:
-                # Page selection for specific editing
-                st.caption("📑 Seleccione páginas a editar")
-                selected_pages = st.multiselect(
-                    "Páginas",
-                    options=list(range(1, page_count + 1)),
-                    default=[1],
-                    key="selected_pages_edit",
-                    label_visibility="collapsed",
-                    help="Seleccione las páginas que desea modificar"
-                )
-                st.session_state.selected_edit_pages = selected_pages
-            
-            # Edit instructions - what to change
-            st.caption("✏️ ¿Qué desea modificar?")
-            edit_prompt = st.text_area(
-                "Instrucciones de edición",
-                placeholder="Describa los cambios a realizar:\n• Actualizar valores del POAI 2025\n• Cambiar fechas a enero 2026\n• Modificar el responsable\n• Actualizar tabla de presupuesto",
-                height=100,
-                help="Indique al agente qué datos actualizar o modificar del documento",
-                key="edit_prompt_input",
-                label_visibility="collapsed"
-            )
-            # Store in separate key to avoid widget key conflict
-            if edit_prompt:
-                st.session_state.edit_instructions_text = edit_prompt
-            
-            # ═══ PROCESS EDIT BUTTON ═══
-            st.markdown("")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🚀 Procesar Edición", key="process_edit_btn", use_container_width=True, type="primary"):
-                    if prev_doc and edit_prompt:
-                        # Extract text from uploaded document
-                        from extractors.document_data_extractor import extract_data_from_upload
+                    elif file_ext == 'docx':
+                        import docx
                         prev_doc.seek(0)
-                        with st.spinner("Extrayendo datos del documento con IA..."):
-                            # Initialize LLM for AI-powered extraction (same as data upload section)
-                            try:
-                                llm = get_llm("groq_llama")
-                            except Exception as llm_err:
-                                st.warning(f"No se pudo iniciar IA de extracción: {llm_err}. Usando patrones.")
-                                llm = None
+                        doc = docx.Document(prev_doc)
+                        # Estimate pages for DOCX (not exact, but helpful context)
+                        # Or just count paragraphs/sections if pages aren't available
+                        # Using core properties if available, otherwise just confirm content
+                        try:
+                            page_count = doc.core_properties.revision # sometimes used as proxy or just show "Detectado"
+                        except:
+                            page_count = "?"
                             
-                            extracted = extract_data_from_upload(
-                                prev_doc,
-                                "mga_subsidios",
-                                llm,  # Pass the LLM for AI extraction
-                                user_context=edit_prompt
-                            )
-                            if extracted and not extracted.get("error"):
-                                # Store extracted data for use in form
-                                st.session_state.extracted_data["mga_subsidios"] = extracted
-                                st.session_state.extracted_data["unified"] = extracted
-                                st.session_state["unified_raw_json"] = extracted
-                                st.session_state["mga_raw_json"] = extracted
-                                st.session_state.edit_instructions_text = edit_prompt
-                                
-                                # EXPLICIT field-to-widget key mapping for all forms
-                                # Maps extracted field name -> list of possible widget keys
-                                FIELD_TO_WIDGET = {
-                                    # Common fields with exact matches
-                                    "municipio": ["mga_municipio", "uni_municipio", "cert_municipio", "dts_municipio"],
-                                    "entidad": ["mga_entidad", "uni_entidad", "cert_entidad", "dts_entidad"],
-                                    "bpin": ["mga_bpin", "uni_bpin", "cert_bpin", "dts_bpin"],
-                                    "responsable": ["mga_responsable", "uni_responsable", "cert_responsable", "dts_responsable"],
-                                    "cargo": ["mga_cargo", "uni_cargo", "cert_cargo", "dts_cargo"],
-                                    
-                                    # Fields with abbreviated widget keys
-                                    "departamento": ["mga_depto", "uni_depto", "cert_depto", "dts_depto"],
-                                    "nombre_proyecto": ["mga_proyecto", "uni_proyecto", "cert_proyecto", "dts_proyecto"],
-                                    "valor_total": ["mga_valor", "uni_valor", "cert_valor", "dts_valor"],
-                                    
-                                    # Plan fields with different suffixes
-                                    "plan_nacional": ["mga_plan_nacional", "uni_pnd"],
-                                    "plan_departamental": ["mga_plan_depto", "uni_pd"],
-                                    "plan_municipal": ["mga_plan_mun", "uni_pm"],
-                                    
-                                    # Other fields
-                                    "objeto": ["uni_objeto"],
-                                    "necesidad": ["uni_necesidad"],
-                                    "alcance": ["uni_alcance"],
-                                    "sector": ["uni_sector"],
-                                    "alcalde": ["uni_alcalde", "cert_alcalde"],
-                                }
-                                
-                                # Apply extracted data to matching widget keys
-                                for field_name, widget_keys in FIELD_TO_WIDGET.items():
-                                    if field_name in extracted and extracted[field_name]:
-                                        # Convert to string to avoid TypeError with st.text_input
-                                        value = str(extracted[field_name])
-                                        for widget_key in widget_keys:
-                                            st.session_state[widget_key] = value
-                                
-                                st.success(f"✅ Datos extraídos! {len(extracted)} campos encontrados. El formulario se ha actualizado.")
-                                st.rerun()
-                            else:
-                                st.error("❌ No se pudo extraer datos del documento")
-                    else:
-                        st.warning("⚠️ Suba un documento y describa los cambios")
-            with col2:
-                if st.button("🗑️ Limpiar", key="clear_edit_btn", use_container_width=True):
-                    for key in ["previous_document", "edit_instructions_text", "selected_edit_pages", "extracted_data"]:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
+                        # Better approach involves rendering, but for now we just acknowledge it
+                        if page_count == "?" or page_count == 0:
+                             st.info(f"📄 Documento Word cargado")
+                        else:
+                             st.info(f"📄 Documento cargado (Rev: {page_count})")
+                             
+                        # Reset seek
+                        prev_doc.seek(0)
+                        
+                    if file_ext == 'pdf' and page_count > 0:
+                        st.info(f"📄 Documento PDF: {page_count} páginas")
+                        
+                except Exception as e:
+                    st.warning(f"📄 Archivo cargado (no se pudo contar páginas: {str(e)})")
             
-            # ═══ MULTI-FILE UPLOAD ═══
-            st.markdown("---")
-            st.markdown("**📁 Archivos Adicionales (Opcional)**")
-            additional_files = st.file_uploader(
-                "Subir archivos de apoyo",
-                type=["pdf", "docx", "xlsx", "txt", "csv"],
-                accept_multiple_files=True,
-                key="additional_files_upload",
-                help="Suba POAI, presupuestos, tablas de datos que el agente debe usar"
-            )
-            if additional_files:
-                st.success(f"✓ {len(additional_files)} archivo(s) adicionales cargados")
-                for f in additional_files:
-                    st.caption(f"  • {f.name} ({f.size/1024:.1f} KB)")
-                st.session_state.additional_edit_files = additional_files
+            # Page Selection (with "Select All" option)
+            if prev_doc and page_count > 0:
+                 st.caption("📑 Seleccione páginas a editar")
+                 
+                 # Select All checkbox
+                 select_all = st.checkbox(
+                     "Seleccionar todas las páginas",
+                     value=True,
+                     key="select_all_pages",
+                     help="Marque para editar todo el documento"
+                 )
+                 
+                 if select_all:
+                     st.session_state.selected_edit_pages = []  # Empty means all pages
+                     st.info(f"📄 Se editarán las {page_count} páginas del documento")
+                 else:
+                     selected_pages = st.multiselect(
+                         "Páginas Específicas",
+                         options=list(range(1, page_count + 1)),
+                         default=[],
+                         key="selected_pages_edit",
+                         help="Seleccione las páginas que desea editar"
+                     )
+                     st.session_state.selected_edit_pages = selected_pages
+                     if selected_pages:
+                         st.info(f"📄 Se editarán las páginas: {', '.join(map(str, selected_pages))}")
             
-            # ═══ QUICK ACTIONS ═══
             st.markdown("---")
-            st.markdown("**⚡ Acciones Rápidas**")
-            quick_col1, quick_col2 = st.columns(2)
-            with quick_col1:
-                if st.button("📊 Actualizar Presupuesto", key="quick_budget", use_container_width=True):
-                    st.session_state.edit_instructions_text = "Actualizar todas las tablas de presupuesto con los nuevos valores del POAI. Mantener la estructura pero actualizar montos."
-                    st.rerun()
-            with quick_col2:
-                if st.button("📅 Actualizar Fechas", key="quick_dates", use_container_width=True):
-                    st.session_state.edit_instructions_text = "Actualizar todas las fechas del documento al año actual (2026). Cambiar cronogramas y vigencias correspondientes."
-                    st.rerun()
+            st.caption("ℹ️ La IA analizará el documento y aplicará sus instrucciones.")
+
         
         # ══════════════════════════════════════
         # MODEL SELECTION
@@ -910,117 +833,22 @@ def render_sidebar():
             label_visibility="collapsed"
         )
         
-        if selected_model in LLM_PROVIDERS:
-            model_info = LLM_PROVIDERS[selected_model]
-            st.caption(f"Usando: {model_info['model']}")
+        # ══════════════════════════════════════
+        # DOCUMENT TYPE (Only for New Mode)
+        # ══════════════════════════════════════
+        if generation_mode == "crear_nuevo":
+            st.markdown("---")
+            st.markdown("**📑 Plantilla**")
+            template = st.selectbox(
+                "Plantilla",
+                options=["estandar", "simplificado", "completo"],
+                format_func=lambda x: x.title(),
+                label_visibility="collapsed"
+            )
+            st.session_state.selected_template = template
         
         st.markdown("---")
-        
-        # ══════════════════════════════════════
-        # TEMPLATE SELECTOR
-        # ══════════════════════════════════════
-        st.markdown("**📑 Plantilla de Estructura**")
-        
-        template = st.selectbox(
-            "Plantilla",
-            options=["estandar", "simplificado", "completo", "personalizado"],
-            format_func=lambda x: {
-                "estandar": "Estándar",
-                "simplificado": "Simplificado (menos secciones)",
-                "completo": "Completo (todas las secciones)",
-                "personalizado": "Personalizado"
-            }.get(x, x),
-            help="Seleccione una plantilla predefinida o personalice",
-            label_visibility="collapsed"
-        )
-        st.session_state.selected_template = template
-        
-        st.markdown("---")
-        
-        # ══════════════════════════════════════
-        # SECTION TOGGLES (for Análisis del Sector)
-        # ══════════════════════════════════════
-        with st.expander("📊 Secciones Activas", expanded=False):
-            st.caption("Marque las secciones a incluir:")
-            
-            # Initialize section toggles in session state
-            if 'section_toggles' not in st.session_state:
-                st.session_state.section_toggles = {
-                    "objeto": True,
-                    "alcance": True,
-                    "descripcion_necesidad": True,
-                    "introduccion": True,
-                    "definiciones": True,
-                    "desarrollo_estudio": True,
-                    "analisis_sector": True,
-                    "grafico_pib": True,
-                    "tabla_smlmv": True,
-                    "riesgos": True,
-                    "estudios_contratacion": True,
-                    "recomendaciones": True,
-                    "fuentes": True,
-                    "estimacion_valor": True,
-                }
-            
-            # Apply template presets
-            if template == "simplificado":
-                preset = {"objeto": True, "alcance": True, "descripcion_necesidad": True, 
-                         "riesgos": True, "estimacion_valor": True}
-                for key in st.session_state.section_toggles:
-                    st.session_state.section_toggles[key] = preset.get(key, False)
-            elif template == "completo":
-                for key in st.session_state.section_toggles:
-                    st.session_state.section_toggles[key] = True
-            
-            # Render checkboxes
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.session_state.section_toggles["objeto"] = st.checkbox(
-                    "OBJETO", value=st.session_state.section_toggles.get("objeto", True), key="cb_objeto")
-                st.session_state.section_toggles["alcance"] = st.checkbox(
-                    "ALCANCE", value=st.session_state.section_toggles.get("alcance", True), key="cb_alcance")
-                st.session_state.section_toggles["descripcion_necesidad"] = st.checkbox(
-                    "Necesidad", value=st.session_state.section_toggles.get("descripcion_necesidad", True), key="cb_necesidad")
-                st.session_state.section_toggles["introduccion"] = st.checkbox(
-                    "Introducción", value=st.session_state.section_toggles.get("introduccion", True), key="cb_intro")
-                st.session_state.section_toggles["definiciones"] = st.checkbox(
-                    "Definiciones", value=st.session_state.section_toggles.get("definiciones", True), key="cb_def")
-                st.session_state.section_toggles["desarrollo_estudio"] = st.checkbox(
-                    "1. Desarrollo", value=st.session_state.section_toggles.get("desarrollo_estudio", True), key="cb_desarrollo")
-                st.session_state.section_toggles["analisis_sector"] = st.checkbox(
-                    "1.5 Análisis", value=st.session_state.section_toggles.get("analisis_sector", True), key="cb_analisis")
-            
-            with col2:
-                st.session_state.section_toggles["grafico_pib"] = st.checkbox(
-                    "Gráfico PIB", value=st.session_state.section_toggles.get("grafico_pib", True), key="cb_pib")
-                st.session_state.section_toggles["tabla_smlmv"] = st.checkbox(
-                    "Tabla SMLMV", value=st.session_state.section_toggles.get("tabla_smlmv", True), key="cb_smlmv")
-                st.session_state.section_toggles["riesgos"] = st.checkbox(
-                    "Riesgos", value=st.session_state.section_toggles.get("riesgos", True), key="cb_riesgos")
-                st.session_state.section_toggles["estudios_contratacion"] = st.checkbox(
-                    "2. Contratación", value=st.session_state.section_toggles.get("estudios_contratacion", True), key="cb_contrat")
-                st.session_state.section_toggles["recomendaciones"] = st.checkbox(
-                    "Recomendaciones", value=st.session_state.section_toggles.get("recomendaciones", True), key="cb_recom")
-                st.session_state.section_toggles["fuentes"] = st.checkbox(
-                    "Fuentes", value=st.session_state.section_toggles.get("fuentes", True), key="cb_fuentes")
-                st.session_state.section_toggles["estimacion_valor"] = st.checkbox(
-                    "Estimación $", value=st.session_state.section_toggles.get("estimacion_valor", True), key="cb_estim")
-        
-        st.markdown("---")
-        
-        # ══════════════════════════════════════
-        # INFO SECTION
-        # ══════════════════════════════════════
-        st.markdown("**📚 Documentos**")
-        st.markdown("""
-        - Estudios Previos
-        - Análisis del Sector
-        """)
-        
-        st.markdown("---")
-        st.caption("Versión 1.1 | © 2026")
-        st.caption("🇨🇴 Metodología MGA - DNP")
+        st.caption("Versión 2.2 | © 2026")
         
         return selected_model
 
@@ -1387,214 +1215,206 @@ def render_certificaciones_form():
 
 
 def render_mga_subsidios_form():
-    """Render input form for MGA (General) document - accepts POAI + Dev Plan inputs"""
+    """
+    Simplified MGA form - Upload files + minimal info → AI generates MGA
+    """
+    
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #0D47A1, #1976D2); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+        <h3 style="color: white; margin: 0;">📋 Generar MGA desde Documentos</h3>
+        <p style="color: rgba(255,255,255,0.8); margin: 5px 0 0 0;">Suba POAI + Plan de Desarrollo → La IA genera el MGA completo</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # ============================================================
-    # FILE UPLOADS SECTION - POAI + Development Plan
+    # FILE UPLOADS - Main Data Sources
     # ============================================================
-    st.markdown('<p class="section-header">📁 Archivos de Entrada (POAI + Plan de Desarrollo)</p>', unsafe_allow_html=True)
+    st.markdown("### 📁 Archivos de Entrada (Obligatorios)")
     
-    st.info("**Modo recomendado:** Suba los archivos del proyecto y la IA extraerá los datos automáticamente para generar el MGA.")
-    
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
         poai_file = st.file_uploader(
-            "📊 POAI (Excel .xlsx)",
+            "📊 **POAI** (Excel .xlsx) *",
             type=["xlsx", "xls"],
-            help="Plan Operativo Anual de Inversiones en formato Excel",
+            help="Plan Operativo Anual de Inversiones - archivo principal del proyecto",
             key="mga_poai_file"
         )
-    
+        
     with col2:
         dev_plan_file = st.file_uploader(
-            "📋 Plan de Desarrollo (Word .docx)",
-            type=["docx"],
-            help="Plan de Desarrollo Municipal/Departamental",
+            "📋 **Plan de Desarrollo** (PDF) *",
+            type=["pdf"],
+            help="Plan de Desarrollo Municipal o Departamental en PDF",
             key="mga_devplan_file"
         )
     
-    with col3:
-        basic_info_file = st.file_uploader(
-            "📝 Info Adicional (PDF/Word)",
-            type=["pdf", "docx"],
-            help="Documentos adicionales con información del proyecto",
-            key="mga_basicinfo_file"
-        )
+    # Optional additional file
+    basic_info_file = st.file_uploader(
+        "📝 Información Adicional (Opcional - PDF/Word)",
+        type=["pdf", "docx"],
+        help="Otros documentos con información relevante del proyecto",
+        key="mga_basicinfo_file"
+    )
     
     # Extract data from uploaded files
-    extracted = {}
     context_dump = ""
+    extracted_summary = []
     
     # Process POAI (XLSX)
     if poai_file:
         try:
             import pandas as pd
-            # Read all sheets
             xlsx = pd.ExcelFile(poai_file)
             poai_text = ""
             for sheet_name in xlsx.sheet_names:
                 df = pd.read_excel(xlsx, sheet_name=sheet_name)
                 poai_text += f"\n=== Hoja: {sheet_name} ===\n"
-                poai_text += df.to_string(index=False)[:3000]  # Limit per sheet
+                poai_text += df.to_string(index=False)[:4000]
             
-            context_dump += f"\n\n=== DATOS DEL POAI ===\n{poai_text[:8000]}"
-            
-            # Try to extract key fields
-            for sheet_name in xlsx.sheet_names:
-                df = pd.read_excel(xlsx, sheet_name=sheet_name)
-                for col in df.columns:
-                    col_lower = str(col).lower()
-                    if 'bpin' in col_lower or 'codigo' in col_lower:
-                        vals = df[col].dropna().astype(str).tolist()
-                        for v in vals:
-                            if len(v) > 8 and v.isdigit():
-                                extracted['bpin'] = v
-                                break
-                    if 'municipio' in col_lower:
-                        vals = df[col].dropna().astype(str).tolist()
-                        if vals:
-                            extracted['municipio'] = vals[0]
-                    if 'proyecto' in col_lower or 'nombre' in col_lower:
-                        vals = df[col].dropna().astype(str).tolist()
-                        if vals and len(vals[0]) > 10:
-                            extracted['nombre_proyecto'] = vals[0]
-                    if 'valor' in col_lower or 'total' in col_lower:
-                        vals = df[col].dropna().tolist()
-                        for v in vals:
-                            if isinstance(v, (int, float)) and v > 100000:
-                                extracted['valor_total'] = str(int(v))
-                                break
-            
-            st.success(f"✅ POAI cargado: {len(xlsx.sheet_names)} hojas procesadas")
+            context_dump += f"\n\n=== DATOS DEL POAI ===\n{poai_text[:12000]}"
+            extracted_summary.append(f"✅ POAI: {len(xlsx.sheet_names)} hojas")
         except Exception as e:
-            st.warning(f"⚠️ Error procesando POAI: {e}")
+            st.error(f"❌ Error procesando POAI: {e}")
     
-    # Process Development Plan (DOCX)
+    # Process Development Plan (PDF) - Extract relevant MGA content only
     if dev_plan_file:
         try:
-            import docx
-            doc = docx.Document(dev_plan_file)
-            dev_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])[:10000]
-            context_dump += f"\n\n=== PLAN DE DESARROLLO ===\n{dev_text}"
-            
-            # Extract plan names
+            import fitz  # PyMuPDF
             import re
-            plan_match = re.search(r'Plan\s+(?:de\s+)?Desarrollo\s+(?:Municipal|Distrital)?\s*[:\-]?\s*([^\n]+)', dev_text, re.I)
-            if plan_match:
-                extracted['plan_municipal'] = plan_match.group(1).strip()[:100]
+            pdf = fitz.open(stream=dev_plan_file.read(), filetype="pdf")
             
-            st.success(f"✅ Plan de Desarrollo cargado: {len(dev_text)} caracteres")
+            # Extract all text first
+            full_text = ""
+            for page in pdf:
+                full_text += page.get_text()
+            
+            # Smart extraction - focus on MGA-relevant content
+            relevant_sections = []
+            
+            # Keywords that indicate relevant MGA content
+            mga_keywords = [
+                r'plan\s+de\s+desarrollo',
+                r'programa',
+                r'subprograma', 
+                r'proyecto',
+                r'meta',
+                r'indicador',
+                r'objetivo',
+                r'estrategia',
+                r'eje\s+estratégico',
+                r'línea\s+estratégica',
+                r'sector',
+                r'presupuesto',
+                r'inversión',
+                r'producto',
+                r'componente',
+                r'diagnóstico',
+                r'problemática',
+                r'población',
+                r'beneficiarios'
+            ]
+            
+            # Extract paragraphs containing relevant keywords
+            paragraphs = full_text.split('\n\n')
+            for para in paragraphs:
+                para_lower = para.lower()
+                if any(re.search(kw, para_lower) for kw in mga_keywords):
+                    if len(para.strip()) > 30:  # Skip very short snippets
+                        relevant_sections.append(para.strip())
+            
+            # Join relevant content, limit to 50k chars max
+            dev_text = "\n\n".join(relevant_sections)[:50000]
+            
+            context_dump += f"\n\n=== PLAN DE DESARROLLO (filtrado: {len(dev_text):,} de {len(full_text):,} chars) ===\n{dev_text}"
+            extracted_summary.append(f"✅ Plan: {len(dev_text):,} chars (de {len(full_text):,})")
         except Exception as e:
-            st.warning(f"⚠️ Error procesando Plan: {e}")
+            st.error(f"❌ Error procesando Plan: {e}")
     
-    # Process Additional Info (PDF/DOCX)
+    # Process Additional Info
     if basic_info_file:
         try:
             if basic_info_file.name.endswith('.pdf'):
-                import fitz  # PyMuPDF
+                import fitz
                 pdf = fitz.open(stream=basic_info_file.read(), filetype="pdf")
                 basic_text = ""
                 for page in pdf:
-                    basic_text += page.get_text()[:2000]
-                context_dump += f"\n\n=== INFORMACIÓN ADICIONAL ===\n{basic_text[:5000]}"
+                    basic_text += page.get_text()[:3000]
+                context_dump += f"\n\n=== INFORMACIÓN ADICIONAL ===\n{basic_text[:8000]}"
             else:
                 import docx
                 doc = docx.Document(basic_info_file)
-                basic_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])[:5000]
+                basic_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])[:8000]
                 context_dump += f"\n\n=== INFORMACIÓN ADICIONAL ===\n{basic_text}"
-            
-            st.success(f"✅ Info adicional cargada")
+            extracted_summary.append("✅ Info adicional cargada")
         except Exception as e:
-            st.warning(f"⚠️ Error procesando info adicional: {e}")
+            st.warning(f"⚠️ Error info adicional: {e}")
     
-    # Also allow manual data extraction from existing MGA
+    # Show extraction status
+    if extracted_summary:
+        st.success(" | ".join(extracted_summary))
+    
+    # ============================================================
+    # MINIMAL REQUIRED FIELDS - Only essentials
+    # ============================================================
     st.markdown("---")
-    st.markdown('<p class="section-header">📤 O extraer datos de MGA existente</p>', unsafe_allow_html=True)
-    manual_extracted = render_data_upload_option("mga_subsidios", "mga")
+    st.markdown("### 📝 Datos Básicos (Mínimos Requeridos)")
     
-    # Merge extracted data (file uploads take priority)
-    for k, v in manual_extracted.items():
-        if k not in extracted or not extracted[k]:
-            extracted[k] = v
-    
-    # ============================================================
-    # FORM FIELDS - Auto-filled from extracted data
-    # ============================================================
-    st.markdown('<p class="section-header">📋 Datos Básicos del Proyecto</p>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        municipio = st.text_input("Municipio *", value=extracted.get("municipio", ""), placeholder="Ej: San Pablo", key="mga_municipio")
-        departamento = st.text_input("Departamento *", value=extracted.get("departamento", ""), placeholder="Ej: Bolívar", key="mga_depto")
-        entidad = st.text_input("Entidad *", value=extracted.get("entidad", ""), placeholder="Ej: Alcaldía Municipal", key="mga_entidad")
-        bpin = st.text_input("Código BPIN", value=extracted.get("bpin", ""), placeholder="Ej: 2024000001367", key="mga_bpin")
-        identificador = st.text_input("Identificador", placeholder="Ej: 1649979", key="mga_identificador")
+        municipio = st.text_input("Municipio *", placeholder="Ej: San Pablo", key="mga_municipio")
+        departamento = st.text_input("Departamento *", placeholder="Ej: Bolívar", key="mga_depto")
     
     with col2:
-        nombre_proyecto = st.text_input("Nombre del Proyecto *", value=extracted.get("nombre_proyecto", ""), placeholder="Ej: Subsidio de Servicios Públicos", key="mga_proyecto")
-        valor_total = st.text_input("Valor Total (COP) *", value=extracted.get("valor_total", ""), placeholder="Ej: 1662485076", key="mga_valor")
-        duracion = st.number_input("Duración (días)", min_value=1, value=365, key="mga_duracion")
-        fecha_creacion = st.text_input("Fecha Creación", value=datetime.now().strftime("%d/%m/%Y %H:%M:%S"), key="mga_fecha")
+        responsable = st.text_input("Responsable *", placeholder="Ej: Carlos Gil", key="mga_responsable")
+        cargo = st.text_input("Cargo", value="Secretario de Planeación", key="mga_cargo")
     
-    st.markdown('<p class="section-header">📊 Planes de Desarrollo</p>', unsafe_allow_html=True)
+    with col3:
+        sector = st.selectbox("Sector", [
+            "Vivienda, ciudad y territorio",
+            "Educación",
+            "Salud",
+            "Agricultura y desarrollo rural",
+            "Transporte",
+            "Cultura",
+            "Ambiente",
+            "Otro"
+        ], key="mga_sector")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        plan_nacional = st.text_input(
-            "Plan Nacional de Desarrollo",
-            value=extracted.get("plan_nacional", "(2022-2026) Colombia Potencia Mundial de la Vida"),
-            key="mga_plan_nacional"
-        )
-        plan_departamental = st.text_input(
-            "Plan Departamental",
-            value=extracted.get("plan_departamental", ""),
-            placeholder="Ej: Bolívar Me Enamora 2024-2027",
-            key="mga_plan_depto"
-        )
-    with col2:
-        plan_municipal = st.text_input(
-            "Plan Municipal",
-            value=extracted.get("plan_municipal", ""),
-            placeholder="Ej: San Pablo Mejor 2024-2027",
-            key="mga_plan_mun"
-        )
-    
-    st.markdown('<p class="section-header">📄 Membrete/Letterhead</p>', unsafe_allow_html=True)
-    
+    # Letterhead
+    st.markdown("---")
     letterhead_file = st.file_uploader(
-        "Subir plantilla con membrete (.docx)",
+        "📄 Membrete/Letterhead (.docx) - Opcional",
         type=["docx"],
-        help="Suba un archivo .docx con el encabezado y pie de página.",
+        help="Plantilla con encabezado y pie de página institucional",
         key="mga_letterhead"
     )
     
-    st.markdown('<p class="section-header">👤 Responsable</p>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        responsable = st.text_input("Nombre del Responsable *", value=extracted.get("responsable", ""), placeholder="Ej: Carlos Augusto Gil Delgado", key="mga_responsable")
-    with col2:
-        cargo = st.text_input("Cargo", value=extracted.get("cargo", "Secretario de Planeación Municipal"), key="mga_cargo")
+    # Info box
+    if not poai_file or not dev_plan_file:
+        st.warning("⚠️ **Suba POAI y Plan de Desarrollo** para generar el MGA. La IA extraerá todos los datos necesarios de estos documentos.")
+    else:
+        st.info("✅ **Listo para generar.** La IA analizará los documentos y creará el MGA completo.")
     
     return {
         "municipio": municipio,
         "departamento": departamento,
-        "entidad": entidad,
-        "bpin": bpin,
-        "identificador": identificador,
-        "nombre_proyecto": nombre_proyecto,
-        "valor_total": valor_total,
-        "duracion": str(duracion),
-        "fecha_creacion": fecha_creacion,
-        "plan_nacional": plan_nacional,
-        "plan_departamental": plan_departamental,
-        "plan_municipal": plan_municipal,
+        "entidad": f"Alcaldía de {municipio}" if municipio else "",
+        "bpin": "",  # AI extracts from POAI
+        "identificador": "",  # AI extracts from POAI
+        "nombre_proyecto": "",  # AI extracts from POAI
+        "valor_total": "",  # AI extracts from POAI
+        "duracion": "365",
+        "fecha_creacion": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "plan_nacional": "(2022-2026) Colombia Potencia Mundial de la Vida",
+        "plan_departamental": "",  # AI extracts from Dev Plan
+        "plan_municipal": "",  # AI extracts from Dev Plan
         "responsable": responsable,
         "cargo": cargo,
+        "sector": sector,
         "letterhead_file": letterhead_file,
-        "context_dump": context_dump  # Pass extracted text to AI
+        "context_dump": context_dump  # ALL file content goes to AI
     }
 
 
@@ -1794,10 +1614,13 @@ def run_generation_logic(doc_type: str, data: dict, model: str):
         st.session_state.skip_validation = False
     
     # Validation is assumed to be done or skipped by the caller/UI state by the time we click Generate
-    # But we can do a quick sanity check on project name
+    # For MGA Subsidios, we check context_dump (from uploaded files) instead of nombre_proyecto
     project_name = data.get("nombre_proyecto", data.get("proyecto", ""))
-    if not project_name:
-        st.error("⚠️ Por favor ingrese al menos el nombre del proyecto.")
+    context_dump = data.get("context_dump", "")
+    
+    # Allow generation if we have context_dump (files uploaded) OR project name
+    if not project_name and not context_dump:
+        st.error("⚠️ Por favor suba los archivos (POAI + Plan) o ingrese el nombre del proyecto.")
         return None
 
     # Clear previous generation state
@@ -1904,7 +1727,7 @@ def main():
             "analisis_sector": "Análisis del Sector", 
             "dts": "DTS (Documento Técnico)",
             "certificaciones": "Certificaciones",
-            "mga_subsidios": "MGA Subsidios"
+            "mga_subsidios": "MGA"
         }.get(x, x),
         horizontal=True,
         label_visibility="collapsed"
@@ -1916,128 +1739,221 @@ def main():
     # DEDICATED UPDATE MODE VIEW
     # ═══════════════════════════════════════════════════════════════
     if mode == "actualizar_existente":
-        # Step-by-step update workflow display
-        st.markdown("""
-        <div style="background: #E3F2FD; border-left: 4px solid #1976D2; padding: 16px; border-radius: 4px; margin-bottom: 20px;">
-            <h4 style="margin: 0 0 8px 0; color: #1565C0;">📋 Flujo de Actualización</h4>
-            <ol style="margin: 0; padding-left: 20px; color: #333;">
-                <li><strong>Sidebar izquierdo:</strong> Suba su documento PDF/DOCX</li>
-                <li><strong>Sidebar izquierdo:</strong> Describa qué desea modificar</li>
-                <li><strong>Sidebar izquierdo:</strong> Clic en "🚀 Procesar Edición"</li>
-                <li><strong>Panel principal:</strong> Revise y ajuste los datos extraídos abajo</li>
-                <li><strong>Panel principal:</strong> Clic en "🚀 Generar Documento(s)"</li>
-            </ol>
-        </div>
-        """, unsafe_allow_html=True)
+        # Get session state values
+        doc = st.session_state.get("previous_document")
+        instr = st.session_state.get("edit_instructions_text")
+        target_pages = st.session_state.get("selected_edit_pages", [])
         
-        # Show extraction status
-        has_extracted = bool(st.session_state.extracted_data.get(doc_type) or st.session_state.extracted_data.get("unified"))
-        has_document = st.session_state.get("previous_document") is not None
+        if not doc or not instr:
+             st.info("👈 **Para comenzar:** Configure las instrucciones y cargue su documento en el panel lateral.")
+             
+             col1, col2 = st.columns(2)
+             with col1:
+                 st.markdown("""
+                 #### Pasos para actualizar:
+                 1. Escriba en el sidebar qué cambios desea realizar
+                 2. Cargue el archivo PDF o Word original
+                 3. Presione el botón de actualizar abajo
+                 """)
+             with col2:
+                 st.markdown("""
+                 #### Capacidades:
+                 - Actualización de fechas y vigencias
+                 - Ajuste de presupuestos (conservando tablas)
+                 - Cambio de responsables
+                 - Modificación de objetos y alcances
+                 """)
+             
+             # Tips section
+             with st.expander("💡 Tips para mejores resultados", expanded=False):
+                 st.markdown("""
+**Escriba instrucciones específicas:**
+
+✅ **Bueno:** "Cambiar el nombre del responsable de 'Juan López' a 'María García' en todas las páginas"
+
+❌ **Evitar:** "Actualizar responsable"
+
+---
+
+**Ejemplos de prompts efectivos:**
+
+• "Cambiar la fecha de impresión de 2025 a 2026"
+• "Reemplazar 'Alcaldía de Bogotá' por 'Alcaldía de Medellín'"
+• "Actualizar el valor total de $100,000,000 a $150,000,000"
+• "Cambiar el código BPIN de 2024000001234 a 2026000005678"
+
+---
+
+**Para evitar cambios no deseados:**
+
+• Sea específico con el texto exacto a cambiar
+• Indique qué NO debe cambiar si es necesario
+• Use páginas específicas si solo necesita editar secciones
+                 """)
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if has_document:
-                st.success("✅ Documento cargado")
-            else:
-                st.warning("⏳ Esperando documento")
-        with col2:
-            edit_instructions = st.session_state.get("edit_instructions_text", "")
-            if edit_instructions:
-                st.success("✅ Instrucciones definidas")
-            else:
-                st.warning("⏳ Sin instrucciones")
-        with col3:
-            if has_extracted:
-                st.success("✅ Datos extraídos")
-            else:
-                st.warning("⏳ Sin extracción")
+        else:
+             # Show ready status
+             st.markdown("""
+             <div style="background: linear-gradient(90deg, #1565C0 0%, #42A5F5 100%); 
+                         color: white; padding: 16px 24px; border-radius: 10px; margin-bottom: 20px;">
+                 <h3 style="margin: 0; color: white;">✅ Documento Listo para Editar</h3>
+             </div>
+             """, unsafe_allow_html=True)
+             
+             # Status cards
+             col1, col2, col3 = st.columns(3)
+             
+             with col1:
+                 st.metric(label="📄 Documento", value=doc.name[:20] + "..." if len(doc.name) > 20 else doc.name)
+             
+             with col2:
+                 page_info = f"Páginas: {', '.join(map(str, target_pages))}" if target_pages else "Todas las páginas"
+                 st.metric(label="📑 Objetivo", value=page_info[:20])
+             
+             with col3:
+                 st.metric(label="📝 Instrucciones", value=f"{len(instr)} caracteres")
+             
+             # Instructions preview
+             with st.expander("👁️ Ver instrucciones de edición", expanded=True):
+                 st.info(instr)
+             
+             st.markdown("---")
+
+    # Render appropriate form (Only for NEW mode usually, but we keep it for now as background data structure)
+    if mode == "crear_nuevo":
+        if doc_type == "unified":
+            data = render_unified_form()
+        elif doc_type == "estudios_previos":
+            data = render_estudios_previos_form()
+        elif doc_type == "analisis_sector":
+            data = render_analisis_sector_form()
+        elif doc_type == "dts":
+            data = render_dts_form()
+        elif doc_type == "certificaciones":
+            data = render_certificaciones_form()
+        else:  # mga_subsidios
+            data = render_mga_subsidios_form()
+    else:
+        # For update mode, we just need basic data or empty data, the generator will use the uploaded file + instructions
+        data = {
+            "edit_mode": True,
+            "instructions": st.session_state.get("edit_instructions_text", ""),
+            "original_file": st.session_state.get("previous_document")
+        }
+
+    # ═══════════════════════════════════════════════════════════════
+    # PRE-GENERATION VALIDATION PANEL (Only for Create New)
+    # ═══════════════════════════════════════════════════════════════
+    
+    validation_issues = []
+    if mode == "crear_nuevo":
+        # Run validation on current data
+        validation_issues = validate_form_data(data, doc_type)
+        
+        if validation_issues:
+            st.markdown("### 🔍 Validación de Datos")
+            
+            critical_count = len([i for i in validation_issues if i[1] == "critical"])
+            warning_count = len([i for i in validation_issues if i[1] == "warning"])
+            info_count = len([i for i in validation_issues if i[1] == "info"])
+            
+            if critical_count > 0:
+                st.error(f"⛔ {critical_count} problema(s) crítico(s) encontrado(s)")
+            if warning_count > 0:
+                st.warning(f"⚠️ {warning_count} campo(s) recomendado(s) faltante(s)")
+            
+            with st.expander("Ver detalles de validación", expanded=True):
+                for field, severity, message in validation_issues:
+                    if severity == "critical":
+                        st.error(message)
+                    elif severity == "warning":
+                        st.warning(message)
+                    else:
+                        st.caption(message)
+            
+            st.caption("💡 Puede corregir los campos arriba o continuar de todos modos.")
         
         st.markdown("---")
-        
-        # Show extracted data preview if available
-        if has_extracted:
-            extracted_data = st.session_state.extracted_data.get(doc_type) or st.session_state.extracted_data.get("unified") or {}
-            
-            st.markdown("### 📊 Datos Extraídos del Documento")
-            
-            # Show key extracted fields in a grid
-            if extracted_data:
-                cols = st.columns(3)
-                field_labels = {
-                    "municipio": "Municipio",
-                    "departamento": "Departamento", 
-                    "nombre_proyecto": "Proyecto",
-                    "valor_total": "Valor Total",
-                    "responsable": "Responsable",
-                    "bpin": "BPIN"
-                }
-                
-                for idx, (key, label) in enumerate(field_labels.items()):
-                    with cols[idx % 3]:
-                        value = extracted_data.get(key, "—")
-                        st.metric(label, value if value else "—")
-                
-                st.markdown("---")
-    
-    # Render appropriate form
-    if doc_type == "unified":
-        data = render_unified_form()
-    elif doc_type == "estudios_previos":
-        data = render_estudios_previos_form()
-    elif doc_type == "analisis_sector":
-        data = render_analisis_sector_form()
-    elif doc_type == "dts":
-        data = render_dts_form()
-    elif doc_type == "certificaciones":
-        data = render_certificaciones_form()
-    else:  # mga_subsidios
-        data = render_mga_subsidios_form()
-    
-    # ═══════════════════════════════════════════════════════════════
-    # PRE-GENERATION VALIDATION PANEL
-    # ═══════════════════════════════════════════════════════════════
-    
-    # Run validation on current data
-    validation_issues = validate_form_data(data, doc_type)
-    
-    if validation_issues:
-        st.markdown("### 🔍 Validación de Datos")
-        
-        critical_count = len([i for i in validation_issues if i[1] == "critical"])
-        warning_count = len([i for i in validation_issues if i[1] == "warning"])
-        info_count = len([i for i in validation_issues if i[1] == "info"])
-        
-        if critical_count > 0:
-            st.error(f"⛔ {critical_count} problema(s) crítico(s) encontrado(s)")
-        if warning_count > 0:
-            st.warning(f"⚠️ {warning_count} campo(s) recomendado(s) faltante(s)")
-        if info_count > 0:
-            st.info(f"ℹ️ {info_count} campo(s) opcional(es) faltante(s)")
-        
-        with st.expander("Ver detalles de validación", expanded=True):
-            for field, severity, message in validation_issues:
-                if severity == "critical":
-                    st.error(message)
-                elif severity == "warning":
-                    st.warning(message)
-                else:
-                    st.caption(message)
-        
-        st.caption("💡 Puede corregir los campos arriba o continuar de todos modos.")
-    
-    st.markdown("---")
     
     # Call sidebar generation controls
     render_sidebar_generation_controls(doc_type, data, selected_model, validation_issues)
 
     # Generate button (Main Panel)
-    if st.button("🚀 Generar Documento(s)", type="primary", use_container_width=True):
-        # Check validation
+    btn_label = "🚀 Generar Documento(s)" if mode == "crear_nuevo" else "🚀 Actualizar Documento"
+    
+    if st.button(btn_label, type="primary", use_container_width=True):
+        # Check validation (only for new)
         has_fake_data = any("PROHIBIDO" in issue[2] for issue in validation_issues if len(issue) > 2)
-        if has_fake_data:
+        if mode == "crear_nuevo" and has_fake_data:
             st.error("⛔ No se puede generar con datos de ejemplo/prueba. Por favor use datos reales.")
+        elif mode == "actualizar_existente" and (not st.session_state.get("previous_document") or not st.session_state.get("edit_instructions_text")):
+             st.error("⚠️ Falta información: Por favor suba un documento e indique las instrucciones de edición en el menú lateral.")
+        elif mode == "actualizar_existente":
+            # === EDIT MODE LOGIC ===
+            with st.spinner("🔄 Analizando documento y aplicando ediciones..."):
+                try:
+                    # Get LLM for AI analysis
+                    llm = get_llm(selected_model)
+                    
+                    # Get file and instructions
+                    uploaded_file = st.session_state.get("previous_document")
+                    instructions = st.session_state.get("edit_instructions_text", "")
+                    target_pages = st.session_state.get("selected_edit_pages", [])
+                    
+                    # Run the editor
+                    result = edit_mga_document(
+                        file=uploaded_file,
+                        user_prompt=instructions,
+                        llm=llm,
+                        target_pages=target_pages if target_pages else None
+                    )
+                    
+                    if result.get("success"):
+                        st.success("✅ ¡Documento editado exitosamente!")
+                        
+                        # Show edits applied
+                        edits_applied = result.get("edits_applied", [])
+                        if edits_applied:
+                            with st.expander("📋 Cambios realizados", expanded=True):
+                                for edit in edits_applied:
+                                    if edit.get("status") == "applied":
+                                        st.markdown(f"✅ **Original:** `{edit.get('original', 'N/A')}`")
+                                        st.markdown(f"   **Nuevo:** `{edit.get('new', 'N/A')}`")
+                                    elif edit.get("status") == "not_found":
+                                        st.warning(f"⚠️ No encontrado: `{edit.get('original', 'N/A')}`")
+                                    elif edit.get("error"):
+                                        st.error(f"❌ Error: {edit.get('error')}")
+                        
+                        # Summary
+                        if result.get("summary"):
+                            st.info(f"📝 Resumen: {result.get('summary')}")
+                        
+                        # Download button
+                        edited_file = result.get("edited_file")
+                        file_name = result.get("file_name", "MGA_editado.docx")
+                        
+                        if edited_file:
+                            file_ext = file_name.split('.')[-1].lower()
+                            mime_type = "application/pdf" if file_ext == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            
+                            st.download_button(
+                                label=f"⬇️ Descargar {file_name}",
+                                data=edited_file,
+                                file_name=file_name,
+                                mime=mime_type,
+                                key="download_edited_doc",
+                                use_container_width=True
+                            )
+                    else:
+                        st.error(f"❌ Error al editar: {result.get('error', 'Error desconocido')}")
+                        
+                except Exception as e:
+                    st.error(f"❌ Error inesperado: {str(e)}")
+                    import traceback
+                    with st.expander("Ver detalles del error"):
+                        st.code(traceback.format_exc())
         else:
-            # RUN SHARED LOGIC
+            # === NEW DOCUMENT GENERATION LOGIC ===
             result = run_generation_logic(doc_type, data, selected_model)
             
             if result:

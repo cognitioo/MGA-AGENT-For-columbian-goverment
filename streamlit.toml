@@ -1,0 +1,6 @@
+GROQ_API_KEY = "YOUR_GROQ_API_KEY"
+GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"
+
+ADMIN_PASSWORD = "change_me"
+USER_PASSWORD = "change_me"
+USER_DAILY_LIMIT = "20"  # cambiar el límite
